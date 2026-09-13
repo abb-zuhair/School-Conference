@@ -1,0 +1,58 @@
+<%- include('../partials/head') %>
+
+<div class="crumbs">
+  <a href="/e/<%= event.slug %>"><%= event.name %></a><span>›</span><%= schedule.display_name %>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <div>
+      <h1><%= schedule.display_name %></h1>
+      <div class="muted small">
+        <% if (schedule.staff_name) { %><%= schedule.staff_name %><% } %>
+        <% if (schedule.department_name) { %> · <%= schedule.department_name %><% } %>
+        · <%= modes[schedule.mode] %><% if (schedule.location || schedule.room) { %> — <%= schedule.location || ('Room ' + schedule.room) %><% } %>
+      </div>
+    </div>
+  </div>
+  <% if (schedule.notes) { %><div class="instructions"><%= schedule.notes %></div><% } %>
+  <p class="muted small">Pick a time below. You can add more teachers before confirming.</p>
+</div>
+
+<% var dates = Object.keys(byDate).sort(); %>
+<% if (!dates.length) { %>
+  <div class="alert info">There are no times left on this schedule.</div>
+<% } %>
+
+<% dates.forEach(function (d) { %>
+  <div class="day">
+    <h3><%= h.formatDate(d) %></h3>
+    <div class="slots">
+      <% byDate[d].forEach(function (s) { %>
+        <div class="slot">
+          <% if (s.is_full) { %>
+            <div class="taken"><%= h.formatTime(s.start_time) %></div>
+          <% } else { %>
+            <form method="post" action="/e/<%= event.slug %>/select">
+              <input type="hidden" name="slot_id" value="<%= s.id %>">
+              <input type="hidden" name="action" value="<%= selected.includes(s.id) ? 'remove' : 'add' %>">
+              <button type="submit" class="<%= selected.includes(s.id) ? 'selected' : '' %>">
+                <%= h.formatTime(s.start_time) %>
+                <% if (s.capacity > 1) { %><span class="cap"><%= s.remaining %> left</span><% } %>
+                <% if (selected.includes(s.id)) { %><span class="cap">✓ selected</span><% } %>
+              </button>
+            </form>
+          <% } %>
+        </div>
+      <% }); %>
+    </div>
+  </div>
+<% }); %>
+
+<div class="basket-bar">
+  <span class="count"><%= selected.length %> time<%= selected.length === 1 ? '' : 's' %> selected</span>
+  <a class="btn ghost" href="/e/<%= event.slug %>">Add another teacher</a>
+  <a class="btn <%= selected.length ? '' : 'disabled' %>" href="/e/<%= event.slug %>/review">Review &amp; confirm</a>
+</div>
+
+<%- include('../partials/foot') %>

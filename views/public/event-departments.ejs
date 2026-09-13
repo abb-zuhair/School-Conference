@@ -1,0 +1,43 @@
+<%- include('../partials/head') %>
+
+<div class="crumbs">
+  <a href="/">Campuses</a><span>›</span>
+  <a href="/c/<%= campus.slug %>"><%= campus.name %></a><span>›</span><%= event.name %>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <div>
+      <h1><%= eventMeta.icon %> <%= event.name %></h1>
+      <div class="muted small"><%= campus.name %> · <%= eventMeta.label %></div>
+    </div>
+    <div class="spacer"></div>
+    <% if (basketCount) { %>
+      <a class="btn" href="/e/<%= event.slug %>/review"><%= basketCount %> selected — review &amp; confirm</a>
+    <% } %>
+  </div>
+
+  <% if (event.description) { %><p><%= event.description %></p><% } %>
+  <% if (event.instructions) { %><div class="instructions"><%= event.instructions %></div><% } %>
+
+  <div class="btn-row small muted">
+    <% if (window.closes) { %><span>Booking closes <%= h.formatDate(window.closes) %> at <%= window.closes.toFormat('h:mm a') %></span><% } %>
+    <% if (event.max_per_student > 0) { %><span class="badge">Max <%= event.max_per_student %> per student</span><% } %>
+    <% if (event.prevent_overlap) { %><span class="badge">Overlapping times blocked</span><% } %>
+  </div>
+</div>
+
+<h2>Choose a department</h2>
+<% if (!departments.length) { %>
+  <div class="alert info">No teacher schedules have been published for this event yet.</div>
+<% } %>
+<div class="grid three">
+  <% departments.forEach(function (d) { %>
+    <a class="tile" href="/e/<%= event.slug %>/d/<%= d.id || 'none' %>">
+      <div class="t-title"><%= d.name || 'Other staff' %></div>
+      <div class="t-sub"><%= d.teacher_count %> teacher<%= d.teacher_count === 1 ? '' : 's' %> · <%= d.schedule_count %> class schedule<%= d.schedule_count === 1 ? '' : 's' %></div>
+    </a>
+  <% }); %>
+</div>
+
+<%- include('../partials/foot') %>

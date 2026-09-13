@@ -1,0 +1,63 @@
+<%- include('../partials/head') %>
+
+<div class="crumbs"><a href="/e/<%= event.slug %>"><%= event.name %></a><span>›</span>Side-by-side</div>
+
+<div class="card">
+  <h1>Compare schedules</h1>
+  <p class="muted small">Green cells are free. Click one to add it to your selection — the same clock time can only be taken once.</p>
+  <% if (dates.length > 1) { %>
+    <div class="btn-row">
+      <% dates.forEach(function (d) { %>
+        <a class="btn sm <%= d === activeDate ? '' : 'ghost' %>"
+           href="/e/<%= event.slug %>/compare?ids=<%= schedules.map(function(s){return s.id}).join(',') %>&amp;date=<%= d %>"><%= h.formatShortDate(d) %></a>
+      <% }); %>
+    </div>
+  <% } %>
+</div>
+
+<div class="card compare">
+  <h2><%= h.formatDate(activeDate) %></h2>
+  <table>
+    <thead>
+      <tr>
+        <th class="time-col">Time</th>
+        <% schedules.forEach(function (s) { %>
+          <th><%= s.display_name %><br><span class="muted small"><%= s.staff_name || '' %></span></th>
+        <% }); %>
+      </tr>
+    </thead>
+    <tbody>
+      <% times.forEach(function (t) { %>
+        <tr>
+          <td class="time-col"><%= h.formatTime(t) %></td>
+          <% schedules.forEach(function (s) { %>
+            <% var slot = s.slots.find(function (x) { return x.slot_date === activeDate && x.start_time === t; }); %>
+            <td>
+              <% if (!slot) { %>
+                <span class="cell-none">—</span>
+              <% } else if (slot.is_full || s.locked) { %>
+                <span class="cell-none">booked</span>
+              <% } else { %>
+                <form method="post" action="/e/<%= event.slug %>/select">
+                  <input type="hidden" name="slot_id" value="<%= slot.id %>">
+                  <input type="hidden" name="action" value="<%= selected.includes(slot.id) ? 'remove' : 'add' %>">
+                  <button class="cell-btn <%= selected.includes(slot.id) ? 'selected' : '' %>" type="submit">
+                    <%= selected.includes(slot.id) ? '✓ chosen' : 'free' %>
+                  </button>
+                </form>
+              <% } %>
+            </td>
+          <% }); %>
+        </tr>
+      <% }); %>
+    </tbody>
+  </table>
+</div>
+
+<div class="basket-bar">
+  <span class="count"><%= selected.length %> selected</span>
+  <a class="btn ghost" href="/e/<%= event.slug %>">Back to departments</a>
+  <a class="btn <%= selected.length ? '' : 'disabled' %>" href="/e/<%= event.slug %>/review">Review &amp; confirm</a>
+</div>
+
+<%- include('../partials/foot') %>

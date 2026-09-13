@@ -1,0 +1,81 @@
+<%- include('../partials/head') %>
+<%- include('../partials/admin-nav') %>
+
+<div class="crumbs"><a href="/admin/staff">Staff</a><span>›</span><%= member.name %></div>
+
+<form method="post" action="/admin/staff" class="card">
+  <h1><%= member.name %></h1>
+  <input type="hidden" name="email" value="<%= member.email %>">
+  <div class="row">
+    <div class="field"><label>Full name</label><input name="name" value="<%= member.name %>" required></div>
+    <div class="field"><label>Email</label><input value="<%= member.email %>" disabled></div>
+    <div class="field"><label>Mobile</label><input name="phone" value="<%= member.phone || '' %>"></div>
+  </div>
+  <div class="row">
+    <div class="field"><label>Job title</label><input name="title" value="<%= member.title || '' %>"></div>
+    <div class="field">
+      <label>Campus</label>
+      <select name="campus_id">
+        <option value="">—</option>
+        <% campuses.forEach(function (c) { %><option value="<%= c.id %>" <%= member.campus_id === c.id ? 'selected' : '' %>><%= c.name %></option><% }); %>
+      </select>
+    </div>
+    <div class="field">
+      <label>Department</label>
+      <select name="department_id">
+        <option value="">—</option>
+        <% departments.forEach(function (d) { %><option value="<%= d.id %>" <%= member.department_id === d.id ? 'selected' : '' %>><%= d.name %></option><% }); %>
+      </select>
+    </div>
+    <div class="field">
+      <label>Role</label>
+      <select name="role">
+        <% roles.forEach(function (r) { %><option value="<%= r %>" <%= member.role === r ? 'selected' : '' %>><%= r %></option><% }); %>
+      </select>
+    </div>
+  </div>
+  <button class="btn" type="submit">Save</button>
+</form>
+
+<div class="card">
+  <h2>Classes</h2>
+  <% if (!classes.length) { %><p class="muted small">No classes yet.</p><% } %>
+  <div class="table-wrap">
+    <table class="data">
+      <tbody>
+        <% classes.forEach(function (c) { %>
+          <tr>
+            <td><strong><%= c.name %></strong></td>
+            <td class="small muted"><%= c.grade_level ? 'Grade ' + c.grade_level : '' %> <%= c.room ? '· Room ' + c.room : '' %></td>
+            <td style="text-align:end;width:90px">
+              <form method="post" action="/admin/classes/<%= c.id %>/delete" onsubmit="return confirm('Delete this class?')">
+                <button class="btn sm danger" type="submit">Delete</button>
+              </form>
+            </td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  </div>
+  <form method="post" action="/admin/classes" style="margin-top:12px">
+    <input type="hidden" name="staff_id" value="<%= member.id %>">
+    <div class="row">
+      <div class="field"><label>Class name</label><input name="name" required placeholder="Grade 6B — Mathematics"></div>
+      <div class="field"><label>Grade</label><input name="grade_level"></div>
+      <div class="field"><label>Room</label><input name="room"></div>
+    </div>
+    <button class="btn sm ghost" type="submit">Add class</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Schedules</h2>
+  <% if (!schedules.length) { %><p class="muted small">Not assigned to any event yet.</p><% } %>
+  <ul>
+    <% schedules.forEach(function (s) { %>
+      <li><a href="/staff/schedule/<%= s.id %>"><%= s.display_name %></a> <span class="muted small">— <%= s.event_name %></span></li>
+    <% }); %>
+  </ul>
+</div>
+
+<%- include('../partials/foot') %>

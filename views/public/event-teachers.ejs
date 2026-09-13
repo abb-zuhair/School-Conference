@@ -1,0 +1,91 @@
+<%- include('../partials/head') %>
+
+<div class="crumbs">
+  <a href="/">Campuses</a><span>›</span>
+  <a href="/c/<%= campus.slug %>"><%= campus.name %></a><span>›</span>
+  <a href="/e/<%= event.slug %>"><%= event.name %></a><span>›</span><%= department ? department.name : 'Other staff' %>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <div>
+      <h1><%= department ? department.name : 'Other staff' %></h1>
+      <div class="muted small"><%= event.name %></div>
+    </div>
+    <div class="spacer"></div>
+    <% if (basketCount) { %><a class="btn" href="/e/<%= event.slug %>/review"><%= basketCount %> selected — review</a><% } %>
+  </div>
+
+  <% if (teachers.length > 1) { %>
+    <form method="get" action="/e/<%= event.slug %>/compare" id="compare-form">
+      <p class="muted small">Tick two or more teachers to see their times side by side — handy when you want to line up one evening.</p>
+      <div class="grid two">
+        <% teachers.forEach(function (t) { %>
+          <% t.schedules.forEach(function (s) { %>
+            <label class="check" style="background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px 14px">
+              <input type="checkbox" name="sid" value="<%= s.id %>">
+              <span>
+                <strong><%= s.display_name %></strong><br>
+                <span class="muted small">
+                  <%= t.name %><%= t.title ? ' · ' + t.title : '' %>
+                  · <%= Math.max(0, s.stats.capacity - s.stats.booked) %> of <%= s.stats.capacity %> free
+                  <% if (s.locked) { %> · <span class="badge bad">Closed</span><% } %>
+                </span>
+              </span>
+            </label>
+          <% }); %>
+        <% }); %>
+      </div>
+      <input type="hidden" name="ids" id="compare-ids">
+      <div class="btn-row"><button class="btn ghost" type="submit">Compare selected schedules</button></div>
+    </form>
+  <% } %>
+</div>
+
+<% if (!teachers.length) { %>
+  <div class="alert info">No schedules have been published in this department yet.</div>
+<% } %>
+
+<% teachers.forEach(function (t) { %>
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <h2><%= t.name %></h2>
+        <% if (t.title) { %><div class="muted small"><%= t.title %></div><% } %>
+      </div>
+    </div>
+    <div class="grid two">
+      <% t.schedules.forEach(function (s) { %>
+        <% var free = Math.max(0, s.stats.capacity - s.stats.booked); %>
+        <% if (s.locked || free === 0) { %>
+          <div class="tile" style="opacity:.6">
+            <div class="t-title"><%= s.display_name %></div>
+            <div class="t-sub">
+              <% if (s.locked) { %><span class="badge bad">Sign-ups closed</span><% } else { %><span class="badge warn">Fully booked</span><% } %>
+            </div>
+          </div>
+        <% } else { %>
+          <a class="tile" href="/e/<%= event.slug %>/s/<%= s.id %>">
+            <div class="t-title"><%= s.display_name %></div>
+            <div class="t-sub">
+              <span class="badge ok"><%= free %> time<%= free === 1 ? '' : 's' %> free</span>
+              <% if (s.room) { %> · Room <%= s.room %><% } %>
+              <% if (s.mode !== 'in_person') { %> · <%= h.MODES[s.mode] %><% } %>
+            </div>
+          </a>
+        <% } %>
+      <% }); %>
+    </div>
+  </div>
+<% }); %>
+
+<script>
+  var cf = document.getElementById('compare-form');
+  if (cf) cf.addEventListener('submit', function () {
+    var ids = Array.prototype.slice.call(cf.querySelectorAll('input[name=sid]:checked')).map(function (i) { return i.value; });
+    document.getElementById('compare-ids').value = ids.join(',');
+    cf.querySelectorAll('input[name=sid]').forEach(function (i) { i.disabled = true; });
+  });
+</script>
+
+<%- include('../partials/foot') %>

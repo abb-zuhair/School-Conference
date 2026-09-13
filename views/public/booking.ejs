@@ -1,0 +1,46 @@
+<%- include('../partials/head', { narrow: true }) %>
+
+<div class="card">
+  <div class="card-head">
+    <div>
+      <h1><%= booking.event_name %></h1>
+      <div class="muted small"><%= booking.campus_name %></div>
+    </div>
+    <div class="spacer"></div>
+    <span class="badge <%= booking.status === 'booked' ? 'ok' : booking.status === 'cancelled' ? 'bad' : 'muted' %>">
+      <%= booking.status === 'booked' ? 'Confirmed' : booking.status %>
+    </span>
+  </div>
+
+  <table class="data">
+    <tr><th>With</th><td><%= booking.staff_name || booking.label || booking.class_name %><% if (booking.department_name) { %> <span class="muted">(<%= booking.department_name %>)</span><% } %></td></tr>
+    <% if (booking.class_name) { %><tr><th>Class</th><td><%= booking.class_name %></td></tr><% } %>
+    <tr><th>Date</th><td><%= h.formatDate(booking.slot_date) %></td></tr>
+    <tr><th>Time</th><td><%= h.formatTime(booking.start_time) %> – <%= h.formatTime(booking.end_time) %></td></tr>
+    <tr><th>Where</th><td>
+      <%= modes[booking.mode] %><% if (booking.location || booking.room) { %> — <%= booking.location || ('Room ' + booking.room) %><% } %>
+      <% if (booking.mode === 'video' && booking.meeting_link) { %><br><a href="<%= booking.meeting_link %>"><%= booking.meeting_link %></a><% } %>
+    </td></tr>
+    <% if (booking.student_name) { %><tr><th>Student</th><td><%= booking.student_name %><%= booking.student_grade ? ' — Grade ' + booking.student_grade : '' %></td></tr><% } %>
+    <tr><th>Parent</th><td><%= booking.parent_name %><br><span class="muted small"><%= booking.parent_email %><%= booking.parent_phone ? ' · ' + booking.parent_phone : '' %></span></td></tr>
+  </table>
+
+  <% if (booking.instructions) { %><div class="instructions" style="margin-top:14px"><%= booking.instructions %></div><% } %>
+
+  <div class="btn-row no-print" style="margin-top:16px">
+    <a class="btn ghost sm" href="/booking/<%= booking.token %>/calendar.ics">Add to calendar</a>
+    <button class="btn ghost sm" onclick="window.print()">Print</button>
+    <% if (booking.status === 'booked') { %>
+      <% if (cancellable.ok) { %>
+        <form method="post" action="/booking/<%= booking.token %>/cancel"
+              onsubmit="return confirm('Cancel this appointment? The time will be released to other parents.')">
+          <button class="btn danger sm" type="submit">Cancel appointment</button>
+        </form>
+      <% } else { %>
+        <span class="muted small"><%= cancellable.reason %></span>
+      <% } %>
+    <% } %>
+  </div>
+</div>
+
+<%- include('../partials/foot') %>

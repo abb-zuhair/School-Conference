@@ -1,0 +1,65 @@
+<%- include('../partials/head') %>
+<%- include('../partials/admin-nav') %>
+
+<form method="post" action="/admin/events" class="card">
+  <h1>New event</h1>
+  <p class="muted small">An event is one booking window — “PTC Term 1 — Hawally”, “Uniform fitting — Salmiya”, “Admissions interviews”.</p>
+
+  <div class="row">
+    <div class="field">
+      <label>Campus *</label>
+      <select name="campus_id" required>
+        <% campuses.forEach(function (c) { %><option value="<%= c.id %>"><%= c.name %></option><% }); %>
+      </select>
+    </div>
+    <div class="field">
+      <label>Type *</label>
+      <select name="type" required>
+        <% Object.keys(EVENT_TYPES).forEach(function (t) { %>
+          <option value="<%= t %>"><%= EVENT_TYPES[t].label %></option>
+        <% }); %>
+      </select>
+      <div class="hint">Conference events are browsed by department → teacher → class. The others list service desks directly.</div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="field"><label>Event name *</label><input name="name" required placeholder="Parent–Teacher Conference — Term 1"></div>
+    <div class="field"><label>Arabic name</label><input name="name_ar"></div>
+    <div class="field"><label>URL slug</label><input name="slug" placeholder="ptc-term1-hawally"></div>
+  </div>
+
+  <div class="field"><label>Short description</label><input name="description" placeholder="Meet your child's teachers, 5–7 October"></div>
+  <div class="field">
+    <label>Instructions for parents</label>
+    <textarea name="instructions" placeholder="Please arrive five minutes early and bring your civil ID for gate entry."></textarea>
+  </div>
+
+  <div class="row">
+    <div class="field"><label>Booking opens</label><input name="opens_at" type="datetime-local"><div class="hint">Leave blank to open as soon as it is published.</div></div>
+    <div class="field"><label>Booking closes</label><input name="closes_at" type="datetime-local"></div>
+  </div>
+
+  <fieldset>
+    <legend>Rules</legend>
+    <div class="row">
+      <div class="field">
+        <label>Max appointments per student</label>
+        <input name="max_per_student" type="number" min="0" value="0">
+        <div class="hint">0 = unlimited.</div>
+      </div>
+      <div class="field">
+        <label>Cancellation cutoff (hours)</label>
+        <input name="cancel_cutoff_hrs" type="number" min="0" value="2">
+      </div>
+    </div>
+    <div class="check"><input type="checkbox" id="po" name="prevent_overlap" checked><label for="po">Stop a family booking two appointments at the same clock time</label></div>
+    <div class="check"><input type="checkbox" id="ac" name="allow_cancel" checked><label for="ac">Let parents cancel online</label></div>
+    <div class="check"><input type="checkbox" id="rp" name="require_phone" checked><label for="rp">Require a mobile number (needed for WhatsApp confirmations)</label></div>
+    <div class="check"><input type="checkbox" id="cs" name="collect_student" checked><label for="cs">Ask for the student's name and grade</label></div>
+  </fieldset>
+
+  <button class="btn" type="submit">Create event</button>
+</form>
+
+<%- include('../partials/foot') %>

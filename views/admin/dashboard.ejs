@@ -1,0 +1,46 @@
+<%- include('../partials/head') %>
+<%- include('../partials/admin-nav') %>
+
+<div class="stat-row">
+  <div class="stat"><div class="n"><%= counts.campuses %></div><div class="l">Campuses</div></div>
+  <div class="stat"><div class="n"><%= counts.staff %></div><div class="l">Active staff</div></div>
+  <div class="stat"><div class="n"><%= counts.bookings %></div><div class="l">Live bookings</div></div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>Events</h2>
+    <div class="spacer"></div>
+    <a class="btn sm" href="/admin/events/new">+ New event</a>
+  </div>
+
+  <% if (!events.length) { %>
+    <p class="muted small">No events yet. Create one, add the schedules parents book against, then publish it.</p>
+  <% } else { %>
+    <div class="table-wrap">
+      <table class="data">
+        <thead><tr><th>Event</th><th>Campus</th><th>Type</th><th>Status</th><th>Schedules</th><th>Booked</th><th></th></tr></thead>
+        <tbody>
+          <% events.forEach(function (e) { %>
+            <tr>
+              <td><a href="/admin/events/<%= e.id %>"><strong><%= e.name %></strong></a><br><span class="muted small mono">/e/<%= e.slug %></span></td>
+              <td><%= e.campus_name %></td>
+              <td><%= (EVENT_TYPES[e.type] || {}).label || e.type %></td>
+              <td>
+                <span class="badge <%= e.status === 'published' ? 'ok' : e.status === 'closed' ? 'warn' : 'muted' %>"><%= e.status %></span>
+              </td>
+              <td><%= e.schedules %></td>
+              <td><%= e.bookings %> <span class="muted small">/ <%= e.capacity %></span></td>
+              <td style="white-space:nowrap">
+                <a class="btn sm ghost" href="/admin/events/<%= e.id %>/report">Report</a>
+                <% if (e.status === 'published') { %><a class="btn sm ghost" href="/e/<%= e.slug %>" target="_blank">Open</a><% } %>
+              </td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</div>
+
+<%- include('../partials/foot') %>

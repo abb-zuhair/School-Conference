@@ -1,0 +1,46 @@
+<%- include('../partials/head') %>
+
+<div class="crumbs">
+  <a href="/">Campuses</a><span>›</span>
+  <a href="/c/<%= campus.slug %>"><%= campus.name %></a><span>›</span><%= event.name %>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <div>
+      <h1><%= eventMeta.icon %> <%= event.name %></h1>
+      <div class="muted small"><%= campus.name %> · <%= eventMeta.label %></div>
+    </div>
+    <div class="spacer"></div>
+    <% if (basketCount) { %><a class="btn" href="/e/<%= event.slug %>/review"><%= basketCount %> selected — review</a><% } %>
+  </div>
+  <% if (event.description) { %><p><%= event.description %></p><% } %>
+  <% if (event.instructions) { %><div class="instructions"><%= event.instructions %></div><% } %>
+  <% if (window.closes) { %><p class="muted small">Booking closes <%= h.formatDate(window.closes) %> at <%= window.closes.toFormat('h:mm a') %>.</p><% } %>
+</div>
+
+<% if (!schedules.length) { %>
+  <div class="alert info">No times have been published for this service yet.</div>
+<% } %>
+
+<div class="grid two">
+  <% schedules.forEach(function (s) { %>
+    <% var free = Math.max(0, s.stats.capacity - s.stats.booked); %>
+    <% if (s.locked || free === 0) { %>
+      <div class="tile" style="opacity:.6">
+        <div class="t-title"><%= s.display_name %></div>
+        <div class="t-sub"><%= s.locked ? 'Sign-ups closed' : 'Fully booked' %></div>
+      </div>
+    <% } else { %>
+      <a class="tile" href="/e/<%= event.slug %>/s/<%= s.id %>">
+        <div class="t-title"><%= s.display_name %></div>
+        <div class="t-sub">
+          <span class="badge ok"><%= free %> time<%= free === 1 ? '' : 's' %> free</span>
+          <% if (s.location) { %> · <%= s.location %><% } %>
+        </div>
+      </a>
+    <% } %>
+  <% }); %>
+</div>
+
+<%- include('../partials/foot') %>

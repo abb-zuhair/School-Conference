@@ -1,0 +1,62 @@
+<%- include('../partials/head') %>
+<%- include('../partials/admin-nav') %>
+
+<div class="card">
+  <h1>Import staff &amp; classes</h1>
+  <p class="muted small">Paste CSV with a header row. Recognised columns:</p>
+  <pre class="mono" style="background:#f6f9fb;padding:12px;border-radius:8px;overflow-x:auto">name,email,phone,title,role,department,grade,room,classes
+Sara Al-Mutairi,sara@aca.edu.kw,99887766,Grade 6 Maths,teacher,Elementary — Mathematics,6,B-204,Grade 6A — Mathematics|Grade 6B — Mathematics
+Uniform Counter 1,uniform1@aca.edu.kw,,,desk,Front Office,,,</pre>
+  <p class="muted small">
+    <code>classes</code> holds one or more class names separated by <code>|</code>.
+    Departments that don't exist yet are created on the chosen campus.
+    Existing emails are updated rather than duplicated.
+  </p>
+
+  <form method="post" action="/admin/staff/import">
+    <div class="field">
+      <label>Campus for these staff</label>
+      <select name="campus_id" required>
+        <% campuses.forEach(function (c) { %><option value="<%= c.id %>"><%= c.name %></option><% }); %>
+      </select>
+    </div>
+    <div class="field">
+      <label>CSV</label>
+      <textarea name="csv" rows="12" class="mono" required placeholder="name,email,..."></textarea>
+    </div>
+    <button class="btn" type="submit">Import</button>
+  </form>
+</div>
+
+<% if (result) { %>
+  <div class="card">
+    <h2>Import result</h2>
+    <div class="stat-row">
+      <div class="stat"><div class="n"><%= result.created %></div><div class="l">Created</div></div>
+      <div class="stat"><div class="n"><%= result.updated %></div><div class="l">Updated</div></div>
+      <div class="stat"><div class="n"><%= result.classes %></div><div class="l">Classes added</div></div>
+      <div class="stat"><div class="n"><%= result.errors.length %></div><div class="l">Errors</div></div>
+    </div>
+
+    <% if (result.errors.length) { %>
+      <div class="alert error"><ul><% result.errors.forEach(function (e) { %><li><%= e %></li><% }); %></ul></div>
+    <% } %>
+
+    <% if (result.passwords.length) { %>
+      <h3>Temporary passwords</h3>
+      <p class="muted small">Copy these now — they are not shown again. Everyone is forced to change it at first sign-in.</p>
+      <div class="table-wrap">
+        <table class="data">
+          <thead><tr><th>Email</th><th>Temporary password</th></tr></thead>
+          <tbody>
+            <% result.passwords.forEach(function (p) { %>
+              <tr><td class="mono small"><%= p.email %></td><td class="mono"><%= p.password %></td></tr>
+            <% }); %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+  </div>
+<% } %>
+
+<%- include('../partials/foot') %>

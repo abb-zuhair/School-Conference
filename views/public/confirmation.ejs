@@ -1,0 +1,45 @@
+<%- include('../partials/head', { narrow: true }) %>
+
+<div class="card">
+  <h1>✅ You're booked</h1>
+  <p>
+    A confirmation has been sent to <strong><%= bookings[0].parent_email %></strong><% if (bookings[0].parent_phone) { %>
+    and on WhatsApp to <strong><%= bookings[0].parent_phone %></strong><% } %>.
+    Each appointment below has its own link you can use to cancel.
+  </p>
+</div>
+
+<% bookings.forEach(function (b) { %>
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <h2><%= b.staff_name || b.label || b.class_name %></h2>
+        <div class="muted small"><%= b.event_name %> · <%= b.campus_name %></div>
+      </div>
+      <div class="spacer"></div>
+      <span class="badge <%= b.status === 'booked' ? 'ok' : 'muted' %>"><%= b.status %></span>
+    </div>
+    <table class="data">
+      <tr><th>Date</th><td><%= h.formatDate(b.slot_date) %></td></tr>
+      <tr><th>Time</th><td><%= h.formatTime(b.start_time) %> – <%= h.formatTime(b.end_time) %></td></tr>
+      <% if (b.class_name) { %><tr><th>Class</th><td><%= b.class_name %></td></tr><% } %>
+      <tr><th>Where</th><td>
+        <%= modes[b.mode] %><% if (b.location) { %> — <%= b.location %><% } %>
+        <% if (b.mode === 'video' && b.meeting_link) { %><br><a href="<%= b.meeting_link %>"><%= b.meeting_link %></a><% } %>
+      </td></tr>
+      <% if (b.student_name) { %><tr><th>Student</th><td><%= b.student_name %><%= b.student_grade ? ' — Grade ' + b.student_grade : '' %></td></tr><% } %>
+    </table>
+    <div class="btn-row" style="margin-top:12px">
+      <a class="btn ghost sm" href="/booking/<%= b.token %>">Manage this appointment</a>
+    </div>
+  </div>
+<% }); %>
+
+<div class="card tight no-print">
+  <div class="btn-row">
+    <button class="btn ghost sm" onclick="window.print()">Print this page</button>
+    <a class="btn ghost sm" href="/">Book something else</a>
+  </div>
+</div>
+
+<%- include('../partials/foot') %>

@@ -1,0 +1,59 @@
+<%- include('../partials/head') %>
+
+<div class="card">
+  <div class="card-head">
+    <div>
+      <h1>Hello, <%= user.name %></h1>
+      <div class="muted small"><%= user.title || user.role %> · <%= user.email %></div>
+    </div>
+    <div class="spacer"></div>
+    <a class="btn ghost sm" href="/staff/password">Change password</a>
+  </div>
+</div>
+
+<h2>My schedules</h2>
+<% if (!schedules.length) { %>
+  <div class="alert info">You have no schedules yet. An administrator creates them when an event is set up.</div>
+<% } %>
+<div class="grid two">
+  <% schedules.forEach(function (s) { %>
+    <a class="tile" href="/staff/schedule/<%= s.id %>">
+      <div class="t-title"><%= s.display_name %></div>
+      <div class="t-sub">
+        <%= s.event_name %>
+        <% if (s.locked) { %> · <span class="badge bad">Locked</span><% } %>
+        <% if (s.event_status !== 'published') { %> · <span class="badge muted"><%= s.event_status %></span><% } %>
+      </div>
+      <div class="t-sub" style="margin-top:6px">
+        <span class="badge ok"><%= s.stats.booked %> booked</span>
+        <span class="badge muted"><%= Math.max(0, s.stats.capacity - s.stats.booked) %> free</span>
+      </div>
+    </a>
+  <% }); %>
+</div>
+
+<div class="card" style="margin-top:20px">
+  <h2>Next appointments</h2>
+  <% if (!upcoming.length) { %>
+    <p class="muted small">No upcoming bookings.</p>
+  <% } else { %>
+    <div class="table-wrap">
+      <table class="data">
+        <thead><tr><th>When</th><th>Class</th><th>Student</th><th>Parent</th><th>Note</th></tr></thead>
+        <tbody>
+          <% upcoming.forEach(function (b) { %>
+            <tr>
+              <td><%= h.formatShortDate(b.slot_date) %><br><span class="muted small"><%= h.formatTime(b.start_time) %></span></td>
+              <td><%= b.with_whom || '' %></td>
+              <td><%= b.student_name || '' %><% if (b.student_grade) { %> <span class="muted small">(<%= b.student_grade %>)</span><% } %></td>
+              <td><%= b.parent_name %><br><span class="muted small"><%= b.parent_phone || b.parent_email %></span></td>
+              <td class="small"><%= b.notes || '' %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</div>
+
+<%- include('../partials/foot') %>

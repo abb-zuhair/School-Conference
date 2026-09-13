@@ -1,0 +1,57 @@
+<%- include('../partials/head') %>
+
+<div class="card">
+  <h1>Book an appointment</h1>
+  <p class="muted" style="max-width:62ch">
+    Choose your campus, then pick a time with your child's teacher or with one of the school offices.
+    You will get a confirmation by email and on WhatsApp, and you can cancel online at any time.
+  </p>
+</div>
+
+<% if (!campuses.length) { %>
+  <div class="alert info">No campuses have been published yet. Please check back soon.</div>
+<% } %>
+
+<% campuses.forEach(function (campus) { %>
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <h2><%= campus.name %></h2>
+        <% if (campus.address) { %><div class="muted small"><%= campus.address %></div><% } %>
+      </div>
+    </div>
+
+    <% var open = campus.events.filter(function(e){ return e.window.state !== 'unpublished'; }); %>
+    <% if (!open.length) { %>
+      <p class="muted small">No appointments are open at this campus right now.</p>
+    <% } else { %>
+      <div class="grid two">
+        <% open.forEach(function (ev) { %>
+          <a class="tile" href="/e/<%= ev.slug %>">
+            <div class="t-title"><%= ev.meta.icon %> <%= ev.name %></div>
+            <div class="t-sub">
+              <%= ev.meta.label %>
+              <% if (ev.window.state === 'open') { %>
+                · <span class="badge ok">Open now</span>
+              <% } else if (ev.window.state === 'not_yet') { %>
+                · <span class="badge warn">Opens <%= h.formatShortDate(ev.window.opens) %> at <%= ev.window.opens.toFormat('h:mm a') %></span>
+              <% } else { %>
+                · <span class="badge muted">Booking closed</span>
+              <% } %>
+            </div>
+            <% if (ev.description) { %><div class="t-sub" style="margin-top:6px"><%= ev.description %></div><% } %>
+          </a>
+        <% }); %>
+      </div>
+    <% } %>
+  </div>
+<% }); %>
+
+<div class="card tight">
+  <div class="btn-row">
+    <span class="muted small">Already booked?</span>
+    <a class="btn ghost sm" href="/lookup">Find my appointments</a>
+  </div>
+</div>
+
+<%- include('../partials/foot') %>

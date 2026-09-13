@@ -1,0 +1,105 @@
+<%- include('../partials/head', { narrow: true }) %>
+
+<div class="crumbs"><a href="/e/<%= event.slug %>"><%= event.name %></a><span>›</span>Review &amp; confirm</div>
+
+<% if (errors && errors.length) { %>
+  <div class="alert error">
+    <strong>Please fix the following:</strong>
+    <ul><% errors.forEach(function (e) { %><li><%= e %></li><% }); %></ul>
+  </div>
+<% } %>
+
+<div class="card">
+  <h1>Your selected times</h1>
+  <% if (!items.length) { %>
+    <p class="muted">Nothing selected yet.</p>
+    <a class="btn" href="/e/<%= event.slug %>">Choose a time</a>
+  <% } else { %>
+    <div class="table-wrap">
+      <table class="data">
+        <thead><tr><th>When</th><th>With</th><th></th></tr></thead>
+        <tbody>
+          <% items.forEach(function (it) { %>
+            <tr>
+              <td><strong><%= h.formatShortDate(it.slot_date) %></strong><br><%= h.formatTime(it.start_time) %> – <%= h.formatTime(it.end_time) %></td>
+              <td>
+                <%= it.display_name %>
+                <% if (it.staff_name) { %><br><span class="muted small"><%= it.staff_name %></span><% } %>
+                <% if (it.department_name) { %><span class="muted small"> · <%= it.department_name %></span><% } %>
+              </td>
+              <td style="text-align:end">
+                <form method="post" action="/e/<%= event.slug %>/select">
+                  <input type="hidden" name="slot_id" value="<%= it.id %>">
+                  <input type="hidden" name="action" value="remove">
+                  <input type="hidden" name="redirect" value="basket">
+                  <button class="btn sm danger" type="submit">Remove</button>
+                </form>
+              </td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+    <div class="btn-row" style="margin-top:12px">
+      <a class="btn ghost sm" href="/e/<%= event.slug %>">+ Add another appointment</a>
+    </div>
+  <% } %>
+</div>
+
+<% if (items.length) { %>
+<form method="post" action="/e/<%= event.slug %>/confirm" class="card">
+  <h2>Your details</h2>
+
+  <% if (event.collect_student) { %>
+    <div class="row">
+      <div class="field">
+        <label for="student_name">Student's full name *</label>
+        <input id="student_name" name="student_name" type="text" required value="<%= form.studentName || '' %>">
+      </div>
+      <div class="field">
+        <label for="student_grade">Grade / class</label>
+        <input id="student_grade" name="student_grade" type="text" value="<%= form.studentGrade || '' %>">
+      </div>
+    </div>
+    <div class="field">
+      <label for="student_ref">Student ID <span class="muted">(optional)</span></label>
+      <input id="student_ref" name="student_ref" type="text" value="<%= form.studentRef || '' %>">
+    </div>
+  <% } %>
+
+  <div class="row">
+    <div class="field">
+      <label for="parent_name">Your name *</label>
+      <input id="parent_name" name="parent_name" type="text" required value="<%= form.parentName || '' %>">
+    </div>
+    <div class="field">
+      <label for="parent_email">Email *</label>
+      <input id="parent_email" name="parent_email" type="email" required value="<%= form.parentEmail || '' %>">
+      <div class="hint">Your confirmation and cancellation link are sent here.</div>
+    </div>
+  </div>
+
+  <div class="field">
+    <label for="parent_phone">WhatsApp mobile <%= event.require_phone ? '*' : '(optional)' %></label>
+    <input id="parent_phone" name="parent_phone" type="tel" <%= event.require_phone ? 'required' : '' %> value="<%= form.parentPhone || '' %>" placeholder="9xxxxxxx">
+    <div class="hint">Kuwaiti numbers can be typed without the country code.</div>
+  </div>
+
+  <div class="field">
+    <label for="notes">Anything you'd like to discuss? <span class="muted">(optional)</span></label>
+    <textarea id="notes" name="notes" maxlength="1000"><%= form.notes || '' %></textarea>
+  </div>
+
+  <div style="position:absolute;left:-9999px" aria-hidden="true">
+    <label for="website">Leave this blank</label>
+    <input id="website" name="website" type="text" tabindex="-1" autocomplete="off">
+  </div>
+
+  <div class="btn-row">
+    <button class="btn" type="submit">Confirm <%= items.length %> appointment<%= items.length === 1 ? '' : 's' %></button>
+    <span class="muted small">You can cancel online later.</span>
+  </div>
+</form>
+<% } %>
+
+<%- include('../partials/foot') %>

@@ -1,0 +1,187 @@
+<%- include('../partials/head') %>
+<%- include('../partials/admin-nav') %>
+
+<div class="card">
+  <div class="card-head">
+    <div>
+      <h1><%= event.name %></h1>
+      <div class="muted small">
+        <%= (EVENT_TYPES[event.type] || {}).label %> ·
+        <span class="mono"><%= config.baseUrl %>/e/<%= event.slug %></span>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <div class="btn-row">
+      <a class="btn ghost sm" href="/admin/events/<%= event.id %>/report">Report</a>
+      <a class="btn ghost sm" href="/admin/events/<%= event.id %>/export.csv">Bookings CSV</a>
+      <a class="btn ghost sm" href="/admin/events/<%= event.id %>/unbooked.csv">Open slots CSV</a>
+      <a class="btn ghost sm" href="/e/<%= event.slug %>" target="_blank">Preview</a>
+    </div>
+  </div>
+
+  <div class="stat-row" style="margin-bottom:0">
+    <div class="stat"><div class="n"><%= stats.booked %></div><div class="l">Booked</div></div>
+    <div class="stat"><div class="n"><%= Math.max(0, stats.capacity - stats.booked) %></div><div class="l">Open slots</div></div>
+    <div class="stat"><div class="n"><%= stats.cancelled %></div><div class="l">Cancelled</div></div>
+    <div class="stat"><div class="n"><%= schedules.length %></div><div class="l">Schedules</div></div>
+  </div>
+
+  <form method="post" action="/admin/events/<%= event.id %>/status" class="btn-row" style="margin-top:16px">
+    <span class="muted small">Status: <span class="badge <%= event.status === 'published' ? 'ok' : 'muted' %>"><%= event.status %></span></span>
+    <select name="status" style="width:auto">
+      <% ['draft','published','closed','archived'].forEach(function (s) { %>
+        <option value="<%= s %>" <%= event.status === s ? 'selected' : '' %>><%= s %></option>
+      <% }); %>
+    </select>
+    <button class="btn sm" type="submit">Update status</button>
+    <span class="muted small">
+      <% if (window.state === 'open') { %>Open to parents now.
+      <% } else if (window.state === 'not_yet') { %>Opens <%= h.formatDate(window.opens) %>.
+      <% } else if (window.state === 'closed') { %>Closed to new bookings.
+      <% } else { %>Not visible to parents.<% } %>
+    </span>
+  </form>
+</div>
+
+<% if (event.type === 'conference') { %>
+<form method="post" action="/admin/events/<%= event.id %>/schedules/generate" class="card">
+  <h2>Create schedules from classes</h2>
+  <p class="muted small">One schedule per active class, for every teacher in the departments you tick. Safe to re-run — existing schedules are left alone.</p>
+  <div class="grid three">
+    <% departments.forEach(function (d) { %>
+      <label class="check"><input type="checkbox" name="department_ids" value="<%= d.id %>"><label for=""><%= d.name %></label></label>
+    <% }); %>
+  </div>
+  <% if (!departments.length) { %><p class="muted small">No departments on this campus yet.</p><% } %>
+  <div class="row">
+    <div class="field">
+      <label>Default mode</label>
+      <select name="mode"><% Object.keys(MODES).forEach(function (m) { %><option value="<%= m %>"><%= MODES[m] %></option><% }); %></select>
+    </div>
+    <div class="field"><label>Default location</label><input name="location" placeholder="Classroom"></div>
+  </div>
+  <button class="btn" type="submit">Create schedules</button>
+</form>
+<% } %>
+
+<form method="post" action="/admin/events/<%= event.id %>/schedules" class="card">
+  <h2>Add a single schedule</h2>
+  <p class="muted small">Use this for a uniform counter, an admissions desk, or one extra teacher.</p>
+  <div class="row">
+    <div class="field"><label>Label</label><input name="label" placeholder="Uniform counter 1"></div>
+    <div class="field">
+      <label>Owner (staff)</label>
+      <select name="staff_id">
+        <option value="">— none —</option>
+        <% teachers.forEach(function (t) { %><option value="<%= t.id %>"><%= t.name %> (<%= t.role %>)</option><% }); %>
+      </select>
+    </div>
+    <div class="field">
+      <label>Department</label>
+      <select name="department_id">
+        <option value="">—</option>
+        <% departments.forEach(function (d) { %><option value="<%= d.id %>"><%= d.name %></option><% }); %>
+      </select>
+    </div>
+    <div class="field">
+      <label>Mode</label>
+      <select name="mode"><% Object.keys(MODES).forEach(function (m) { %><option value="<%= m %>"><%= MODES[m] %></option><% }); %></select>
+    </div>
+  </div>
+  <div class="row">
+    <div class="field"><label>Location</label><input name="location"></div>
+    <div class="field"><label>Video link</label><input name="meeting_link" type="url"></div>
+  </div>
+  <button class="btn" type="submit">Add schedule</button>
+</form>
+
+<form method="post" action="/admin/events/<%= event.id %>/slots/bulk" class="card">
+  <h2>Generate slots across schedules</h2>
+  <p class="muted small">Roll the same pattern over every schedule you tick. Duplicate times are skipped, so this is safe to run again after adding a teacher.</p>
+
+  <div class="row">
+    <div class="field"><label>Dates *</label><input name="dates" placeholder="2026-10-05, 2026-10-06" required><div class="hint">YYYY-MM-DD, comma separated.</div></div>
+    <div class="field"><label>Start *</label><input name="start_time" type="time" value="15:00" required></div>
+    <div class="field"><label>End *</label><input name="end_time" type="time" value="18:00" required></div>
+  </div>
+  <div class="row">
+    <div class="field"><label>Minutes each *</label><input name="duration" type="number" min="5" value="10" required></div>
+    <div class="field"><label>Gap (min)</label><input name="gap" type="number" min="0" value="0"></div>
+    <div class="field"><label>Parents per slot</label><input name="capacity" type="number" min="1" value="1"><div class="hint">Use more than 1 for a walk-up counter.</div></div>
+  </div>
+  <fieldset>
+    <legend>Break (optional)</legend>
+    <div class="row">
+      <div class="field"><label>From</label><input name="break_start" type="time"></div>
+      <div class="field"><label>To</label><input name="break_end" type="time"></div>
+      <div class="field"><label>Label</label><input name="break_label" placeholder="Maghrib prayer"></div>
+    </div>
+  </fieldset>
+
+  <h3>Apply to</h3>
+  <div class="btn-row" style="margin-bottom:10px">
+    <button class="btn sm ghost" type="button" onclick="document.querySelectorAll('input[name=schedule_ids]').forEach(function(c){c.checked=true})">Select all</button>
+    <button class="btn sm ghost" type="button" onclick="document.querySelectorAll('input[name=schedule_ids]').forEach(function(c){c.checked=false})">Clear</button>
+  </div>
+  <div class="grid three" style="max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:12px">
+    <% schedules.forEach(function (s) { %>
+      <label class="check">
+        <input type="checkbox" name="schedule_ids" value="<%= s.id %>">
+        <span><%= s.display_name %><br><span class="muted small"><%= s.staff_name || '' %> · <%= s.stats.total_slots %> slots</span></span>
+      </label>
+    <% }); %>
+  </div>
+  <% if (!schedules.length) { %><p class="muted small">Create schedules first.</p><% } %>
+  <div class="btn-row" style="margin-top:14px"><button class="btn" type="submit">Generate slots</button></div>
+</form>
+
+<div class="card">
+  <h2>Schedules (<%= schedules.length %>)</h2>
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>Schedule</th><th>Owner</th><th>Department</th><th>Slots</th><th>Booked</th><th>State</th><th></th></tr></thead>
+      <tbody>
+        <% schedules.forEach(function (s) { %>
+          <tr>
+            <td><a href="/staff/schedule/<%= s.id %>"><strong><%= s.display_name %></strong></a></td>
+            <td class="small"><%= s.staff_name || '—' %></td>
+            <td class="small"><%= s.department_name || '—' %></td>
+            <td><%= s.stats.total_slots %></td>
+            <td><%= s.stats.booked %> <span class="muted small">/ <%= s.stats.capacity %></span></td>
+            <td><% if (s.locked) { %><span class="badge bad">locked</span><% } else { %><span class="badge ok">open</span><% } %></td>
+            <td style="text-align:end">
+              <form method="post" action="/admin/schedules/<%= s.id %>/delete" onsubmit="return confirm('Delete this schedule and all its empty slots?')">
+                <button class="btn sm danger" type="submit">Delete</button>
+              </form>
+            </td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<form method="post" action="/admin/events/<%= event.id %>" class="card">
+  <h2>Event settings</h2>
+  <div class="row">
+    <div class="field"><label>Name</label><input name="name" value="<%= event.name %>" required></div>
+    <div class="field"><label>Arabic name</label><input name="name_ar" value="<%= event.name_ar || '' %>"></div>
+  </div>
+  <div class="field"><label>Short description</label><input name="description" value="<%= event.description || '' %>"></div>
+  <div class="field"><label>Instructions for parents</label><textarea name="instructions"><%= event.instructions || '' %></textarea></div>
+  <div class="row">
+    <div class="field"><label>Booking opens</label><input name="opens_at" type="datetime-local" value="<%= (event.opens_at || '').replace(' ', 'T') %>"></div>
+    <div class="field"><label>Booking closes</label><input name="closes_at" type="datetime-local" value="<%= (event.closes_at || '').replace(' ', 'T') %>"></div>
+  </div>
+  <div class="row">
+    <div class="field"><label>Max per student (0 = unlimited)</label><input name="max_per_student" type="number" min="0" value="<%= event.max_per_student %>"></div>
+    <div class="field"><label>Cancellation cutoff (hours)</label><input name="cancel_cutoff_hrs" type="number" min="0" value="<%= event.cancel_cutoff_hrs %>"></div>
+  </div>
+  <div class="check"><input type="checkbox" id="e_po" name="prevent_overlap" <%= event.prevent_overlap ? 'checked' : '' %>><label for="e_po">Block overlapping times for one family</label></div>
+  <div class="check"><input type="checkbox" id="e_ac" name="allow_cancel" <%= event.allow_cancel ? 'checked' : '' %>><label for="e_ac">Let parents cancel online</label></div>
+  <div class="check"><input type="checkbox" id="e_rp" name="require_phone" <%= event.require_phone ? 'checked' : '' %>><label for="e_rp">Require a mobile number</label></div>
+  <div class="check"><input type="checkbox" id="e_cs" name="collect_student" <%= event.collect_student ? 'checked' : '' %>><label for="e_cs">Ask for student name and grade</label></div>
+  <button class="btn" type="submit">Save settings</button>
+</form>
+
+<%- include('../partials/foot') %>

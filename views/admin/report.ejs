@@ -1,0 +1,75 @@
+<%- include('../partials/head') %>
+<%- include('../partials/admin-nav') %>
+
+<div class="crumbs"><a href="/admin/events/<%= event.id %>"><%= event.name %></a><span>›</span>Report</div>
+
+<div class="card">
+  <div class="card-head">
+    <div>
+      <h1><%= event.name %> — report</h1>
+      <div class="muted small"><%= (EVENT_TYPES[event.type] || {}).label %></div>
+    </div>
+    <div class="spacer"></div>
+    <div class="btn-row no-print">
+      <a class="btn ghost sm" href="/admin/events/<%= event.id %>/export.csv">Bookings CSV</a>
+      <a class="btn ghost sm" href="/admin/events/<%= event.id %>/unbooked.csv">Open slots CSV</a>
+      <button class="btn ghost sm" onclick="window.print()">Print</button>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Fill rate by schedule</h2>
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>Schedule</th><th>Teacher</th><th>Department</th><th>Capacity</th><th>Booked</th><th>Fill</th></tr></thead>
+      <tbody>
+        <% schedules.forEach(function (s) { %>
+          <% var pct = s.stats.capacity ? Math.round((s.stats.booked / s.stats.capacity) * 100) : 0; %>
+          <tr>
+            <td><%= s.display_name %></td>
+            <td class="small"><%= s.staff_name || '—' %></td>
+            <td class="small"><%= s.department_name || '—' %></td>
+            <td><%= s.stats.capacity %></td>
+            <td><%= s.stats.booked %></td>
+            <td>
+              <div style="background:#eef2f5;border-radius:6px;height:9px;width:110px;overflow:hidden">
+                <div style="background:<%= pct > 80 ? 'var(--ok)' : pct > 40 ? 'var(--navy)' : '#9db6c7' %>;height:100%;width:<%= pct %>%"></div>
+              </div>
+              <span class="muted small"><%= pct %>%</span>
+            </td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <h2>All bookings (<%= bookings.length %>)</h2>
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>When</th><th>With</th><th>Student</th><th>Parent</th><th>Contact</th><th>Status</th><th class="no-print"></th></tr></thead>
+      <tbody>
+        <% bookings.forEach(function (b) { %>
+          <tr>
+            <td><%= h.formatShortDate(b.slot_date) %><br><span class="muted small"><%= h.formatTime(b.start_time) %></span></td>
+            <td><%= b.with_whom %><% if (b.department_name) { %><br><span class="muted small"><%= b.department_name %></span><% } %></td>
+            <td><%= b.student_name || '' %><% if (b.student_grade) { %> <span class="muted small">(<%= b.student_grade %>)</span><% } %></td>
+            <td><%= b.parent_name %></td>
+            <td class="small mono"><%= b.parent_phone || '' %><br><%= b.parent_email %></td>
+            <td><span class="badge <%= b.status === 'booked' ? 'ok' : b.status === 'cancelled' ? 'bad' : 'muted' %>"><%= b.status %></span></td>
+            <td class="no-print" style="white-space:nowrap">
+              <% if (b.status === 'booked') { %>
+                <form method="post" action="/admin/bookings/<%= b.id %>/resend" style="display:inline"><button class="btn sm ghost" type="submit">Resend</button></form>
+                <form method="post" action="/staff/booking/<%= b.id %>/cancel" style="display:inline" onsubmit="return confirm('Cancel and notify the parent?')"><button class="btn sm danger" type="submit">Cancel</button></form>
+              <% } %>
+            </td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<%- include('../partials/foot') %>

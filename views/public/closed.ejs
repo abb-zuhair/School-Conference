@@ -1,0 +1,19 @@
+<%- include('../partials/head', { narrow: true }) %>
+
+<div class="card">
+  <h1><%= event.name %></h1>
+  <% if (window.state === 'not_yet') { %>
+    <div class="alert info">
+      Booking for this event opens on <strong><%= h.formatDate(window.opens) %></strong>
+      at <strong><%= window.opens.toFormat('h:mm a') %></strong>.
+    </div>
+  <% } else if (window.state === 'closed') { %>
+    <div class="alert info">Booking for this event has closed<% if (window.closes) { %> (<%= h.formatDate(window.closes) %>)<% } %>. Please contact the school office.</div>
+  <% } else { %>
+    <div class="alert info">This booking page is not open.</div>
+  <% } %>
+  <% if (event.description) { %><p><%= event.description %></p><% } %>
+  <a class="btn" href="/">Back to all appointments</a>
+</div>
+
+<%- include('../partials/foot') %>

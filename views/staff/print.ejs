@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title><%= title %></title>
+  <link rel="stylesheet" href="/static/css/app.css">
+  <style>
+    body { background: #fff; }
+    .sheet { max-width: 780px; margin: 0 auto; padding: 24px; }
+    .sheet h1 { margin-bottom: 2px; }
+    .sign { width: 140px; border-bottom: 1px solid #bbb; display: inline-block; height: 1.1em; }
+    @page { margin: 14mm; }
+  </style>
+</head>
+<body>
+<div class="sheet">
+  <h1><%= schedule.display_name %></h1>
+  <p class="muted">
+    <%= schedule.event_name %> · <%= schedule.campus_name %>
+    <% if (schedule.staff_name) { %> · <%= schedule.staff_name %><% } %>
+    <% if (schedule.location || schedule.room) { %> · <%= schedule.location || ('Room ' + schedule.room) %><% } %>
+  </p>
+
+  <% var dates = [...new Set(slots.map(function (s) { return s.slot_date; }))]; %>
+  <% dates.forEach(function (d) { %>
+    <h2 style="margin-top:20px"><%= h.formatDate(d) %></h2>
+    <table class="data">
+      <thead><tr><th style="width:90px">Time</th><th>Student</th><th>Parent</th><th style="width:110px">Phone</th><th style="width:150px">Signature</th></tr></thead>
+      <tbody>
+        <% slots.filter(function (s) { return s.slot_date === d; }).forEach(function (s) { %>
+          <% var rows = bySlot[s.id] || []; %>
+          <% if (s.blocked && !rows.length) { %>
+            <tr><td class="mono"><%= h.formatTime(s.start_time) %></td><td colspan="4" class="muted"><%= s.note || 'Break' %></td></tr>
+          <% } else if (!rows.length) { %>
+            <tr><td class="mono"><%= h.formatTime(s.start_time) %></td><td class="muted">(open)</td><td></td><td></td><td><span class="sign"></span></td></tr>
+          <% } else { %>
+            <% rows.forEach(function (b) { %>
+              <tr>
+                <td class="mono"><%= h.formatTime(s.start_time) %></td>
+                <td><strong><%= b.student_name || '' %></strong><%= b.student_grade ? ' — ' + b.student_grade : '' %></td>
+                <td><%= b.parent_name %></td>
+                <td class="mono small"><%= b.parent_phone || '' %></td>
+                <td><span class="sign"></span></td>
+              </tr>
+            <% }); %>
+          <% } %>
+        <% }); %>
+      </tbody>
+    </table>
+  <% }); %>
+
+  <p class="muted small" style="margin-top:22px">Printed <%= h.nowLocal().toFormat('d LLL yyyy, h:mm a') %></p>
+</div>
+<script>window.print();</script>
+</body>
+</html>

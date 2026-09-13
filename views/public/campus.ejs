@@ -1,0 +1,28 @@
+<%- include('../partials/head') %>
+
+<div class="crumbs"><a href="/">All campuses</a><span>›</span><%= campus.name %></div>
+
+<div class="card">
+  <h1><%= campus.name %></h1>
+  <% if (campus.address) { %><p class="muted"><%= campus.address %><% if (campus.phone) { %> · <%= campus.phone %><% } %></p><% } %>
+</div>
+
+<% if (!events.length) { %>
+  <div class="alert info">Nothing is open for booking at this campus right now.</div>
+<% } %>
+
+<div class="grid two">
+  <% events.forEach(function (ev) { %>
+    <a class="tile" href="/e/<%= ev.slug %>">
+      <div class="t-title"><%= ev.meta.icon %> <%= ev.name %></div>
+      <div class="t-sub">
+        <%= ev.meta.label %>
+        <% if (ev.window.state === 'open') { %> · <span class="badge ok">Open now</span>
+        <% } else if (ev.window.state === 'not_yet') { %> · <span class="badge warn">Opens <%= h.formatShortDate(ev.window.opens) %></span>
+        <% } else { %> · <span class="badge muted">Closed</span><% } %>
+      </div>
+    </a>
+  <% }); %>
+</div>
+
+<%- include('../partials/foot') %>

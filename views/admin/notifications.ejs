@@ -1,0 +1,41 @@
+<%- include('../partials/head') %>
+<%- include('../partials/admin-nav') %>
+
+<div class="card">
+  <div class="card-head">
+    <div>
+      <h1>Message log</h1>
+      <div class="muted small">
+        Email: <%= config.graph.enabled ? 'Microsoft Graph configured' : 'not configured' %> ·
+        WhatsApp: <%= config.wati.enabled ? 'WATI configured' : 'not configured' %>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <% if (user.role === 'admin') { %>
+      <form method="post" action="/admin/notifications/test-reminders">
+        <button class="btn sm ghost" type="submit">Run reminder job now</button>
+      </form>
+    <% } %>
+  </div>
+
+  <% if (!rows.length) { %><p class="muted small">Nothing sent yet.</p><% } %>
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>When</th><th>Channel</th><th>Kind</th><th>Recipient</th><th>Status</th><th>Detail</th></tr></thead>
+      <tbody>
+        <% rows.forEach(function (r) { %>
+          <tr>
+            <td class="small mono"><%= r.created_at %></td>
+            <td><%= r.channel === 'whatsapp' ? 'WhatsApp' : 'Email' %></td>
+            <td class="small"><%= r.kind %></td>
+            <td class="small mono"><%= r.recipient || '' %></td>
+            <td><span class="badge <%= r.status === 'sent' ? 'ok' : r.status === 'failed' ? 'bad' : 'muted' %>"><%= r.status %></span></td>
+            <td class="small muted"><%= r.detail || '' %></td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<%- include('../partials/foot') %>

@@ -1,0 +1,42 @@
+<%- include('../partials/head', { narrow: true }) %>
+
+<div class="card">
+  <h1>Find my appointments</h1>
+  <p class="muted small">Enter the email address you used when booking.</p>
+  <% if (typeof error !== 'undefined' && error) { %><div class="alert error"><%= error %></div><% } %>
+  <form method="post" action="/lookup">
+    <div class="field">
+      <label for="parent_email">Email address</label>
+      <input id="parent_email" name="parent_email" type="email" required value="<%= email %>">
+    </div>
+    <button class="btn" type="submit">Search</button>
+  </form>
+</div>
+
+<% if (results) { %>
+  <div class="card">
+    <h2><%= results.length %> appointment<%= results.length === 1 ? '' : 's' %> found</h2>
+    <% if (!results.length) { %>
+      <p class="muted">Nothing booked with that address. Check for a typo, or book a new time from the home page.</p>
+    <% } else { %>
+      <div class="table-wrap">
+        <table class="data">
+          <thead><tr><th>When</th><th>With</th><th>Event</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            <% results.forEach(function (r) { %>
+              <tr>
+                <td><%= h.formatShortDate(r.slot_date) %><br><span class="muted small"><%= h.formatTime(r.start_time) %></span></td>
+                <td><%= r.with_whom %></td>
+                <td><%= r.event_name %><br><span class="muted small"><%= r.campus_name %></span></td>
+                <td><span class="badge <%= r.status === 'booked' ? 'ok' : 'muted' %>"><%= r.status %></span></td>
+                <td><a class="btn sm ghost" href="/booking/<%= r.token %>">Open</a></td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+  </div>
+<% } %>
+
+<%- include('../partials/foot') %>

@@ -1,0 +1,163 @@
+<%- include('../partials/head') %>
+
+<div class="crumbs"><a href="/staff">My schedules</a><span>›</span><%= schedule.display_name %></div>
+
+<div class="card">
+  <div class="card-head">
+    <div>
+      <h1><%= schedule.display_name %></h1>
+      <div class="muted small">
+        <%= schedule.event_name %> · <%= schedule.campus_name %>
+        <% if (schedule.department_name) { %> · <%= schedule.department_name %><% } %>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <div class="btn-row">
+      <a class="btn ghost sm" href="/staff/schedule/<%= schedule.id %>/print" target="_blank">Print sheet</a>
+      <a class="btn ghost sm" href="/staff/schedule/<%= schedule.id %>/export.csv">Export CSV</a>
+      <form method="post" action="/staff/schedule/<%= schedule.id %>/lock">
+        <input type="hidden" name="locked" value="<%= schedule.locked ? '0' : '1' %>">
+        <button class="btn sm <%= schedule.locked ? '' : 'danger' %>" type="submit">
+          <%= schedule.locked ? 'Unlock — allow sign-ups' : 'Lock schedule' %>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div class="stat-row" style="margin-bottom:0">
+    <div class="stat"><div class="n"><%= stats.booked %></div><div class="l">Booked</div></div>
+    <div class="stat"><div class="n"><%= Math.max(0, stats.capacity - stats.booked) %></div><div class="l">Still free</div></div>
+    <div class="stat"><div class="n"><%= stats.total_slots %></div><div class="l">Slots</div></div>
+    <div class="stat"><div class="n"><%= schedule.locked ? 'Locked' : 'Open' %></div><div class="l">Sign-ups</div></div>
+  </div>
+  <% if (schedule.locked) { %>
+    <div class="alert info" style="margin-top:14px;margin-bottom:0">Your schedule is locked — parents cannot make new bookings. Existing bookings are unaffected.</div>
+  <% } %>
+</div>
+
+<div class="grid two">
+  <form method="post" action="/staff/schedule/<%= schedule.id %>/slots" class="card">
+    <h2>Add time slots</h2>
+    <div class="field">
+      <label for="dates">Date(s)</label>
+      <input id="dates" name="dates" type="text" placeholder="2026-10-05, 2026-10-06" required>
+      <div class="hint">One or more dates as YYYY-MM-DD, separated by commas.</div>
+    </div>
+    <div class="row">
+      <div class="field"><label for="start_time">Start</label><input id="start_time" name="start_time" type="time" value="15:00" required></div>
+      <div class="field"><label for="end_time">End</label><input id="end_time" name="end_time" type="time" value="18:00" required></div>
+    </div>
+    <div class="row">
+      <div class="field"><label for="duration">Minutes each</label><input id="duration" name="duration" type="number" min="5" max="240" value="10" required></div>
+      <div class="field"><label for="gap">Gap (min)</label><input id="gap" name="gap" type="number" min="0" max="60" value="0"></div>
+      <div class="field"><label for="capacity">Parents per slot</label><input id="capacity" name="capacity" type="number" min="1" max="50" value="1"></div>
+    </div>
+    <fieldset>
+      <legend>Break (optional)</legend>
+      <div class="row">
+        <div class="field"><label for="break_start">From</label><input id="break_start" name="break_start" type="time"></div>
+        <div class="field"><label for="break_end">To</label><input id="break_end" name="break_end" type="time"></div>
+        <div class="field"><label for="break_label">Label</label><input id="break_label" name="break_label" type="text" placeholder="Break"></div>
+      </div>
+    </fieldset>
+    <button class="btn" type="submit">Generate slots</button>
+  </form>
+
+  <form method="post" action="/staff/schedule/<%= schedule.id %>/settings" class="card">
+    <h2>Meeting details</h2>
+    <div class="field">
+      <label for="label">Display name <span class="muted">(optional)</span></label>
+      <input id="label" name="label" type="text" value="<%= schedule.label || '' %>" placeholder="<%= schedule.class_name || schedule.staff_name || '' %>">
+    </div>
+    <div class="field">
+      <label for="mode">How the meeting happens</label>
+      <select id="mode" name="mode">
+        <% Object.keys(modes).forEach(function (m) { %>
+          <option value="<%= m %>" <%= schedule.mode === m ? 'selected' : '' %>><%= modes[m] %></option>
+        <% }); %>
+      </select>
+    </div>
+    <div class="field">
+      <label for="location">Room / location</label>
+      <input id="location" name="location" type="text" value="<%= schedule.location || '' %>" placeholder="<%= schedule.room ? 'Room ' + schedule.room : 'Building A, Room 12' %>">
+    </div>
+    <div class="field">
+      <label for="meeting_link">Video link <span class="muted">(Teams / Zoom)</span></label>
+      <input id="meeting_link" name="meeting_link" type="url" value="<%= schedule.meeting_link || '' %>">
+      <div class="hint">Included in the confirmation email when the mode is a video call.</div>
+    </div>
+    <div class="field">
+      <label for="notes">Note for parents</label>
+      <textarea id="notes" name="notes"><%= schedule.notes || '' %></textarea>
+    </div>
+    <button class="btn" type="submit">Save details</button>
+  </form>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>Slots &amp; bookings</h2>
+    <div class="spacer"></div>
+    <form method="post" action="/staff/schedule/<%= schedule.id %>/clear" onsubmit="return confirm('Remove every empty slot from this schedule?')">
+      <button class="btn danger sm" type="submit">Remove empty slots</button>
+    </form>
+  </div>
+
+  <% if (!slots.length) { %>
+    <p class="muted small">No slots yet — generate some above.</p>
+  <% } else { %>
+    <div class="table-wrap">
+      <table class="data">
+        <thead>
+          <tr><th>Date</th><th>Time</th><th>Status</th><th>Parent &amp; student</th><th>Note</th><th></th></tr>
+        </thead>
+        <tbody>
+          <% var lastDate = null; %>
+          <% slots.forEach(function (s) { %>
+            <% var rows = (bySlot[s.id] || []).filter(function (b) { return b.status !== 'cancelled'; }); %>
+            <tr>
+              <td><% if (s.slot_date !== lastDate) { %><strong><%= h.formatShortDate(s.slot_date) %></strong><% lastDate = s.slot_date; } %></td>
+              <td class="mono"><%= h.formatTime(s.start_time) %></td>
+              <td>
+                <% if (s.blocked) { %><span class="badge muted"><%= s.note || 'Blocked' %></span>
+                <% } else if (rows.length >= s.capacity) { %><span class="badge ok">Full</span>
+                <% } else { %><span class="badge"><%= s.capacity - rows.length %> free</span><% } %>
+              </td>
+              <td>
+                <% if (!rows.length) { %><span class="muted small">—</span><% } %>
+                <% rows.forEach(function (b) { %>
+                  <div style="margin-bottom:5px">
+                    <strong><%= b.student_name || b.parent_name %></strong>
+                    <% if (b.student_grade) { %> <span class="muted small">(<%= b.student_grade %>)</span><% } %>
+                    <br><span class="muted small"><%= b.parent_name %> · <%= b.parent_phone || '' %> · <%= b.parent_email %></span>
+                    <% if (b.status !== 'booked') { %> <span class="badge muted"><%= b.status %></span><% } %>
+                  </div>
+                <% }); %>
+              </td>
+              <td class="small"><% rows.forEach(function (b) { %><div><%= b.notes || '' %></div><% }); %></td>
+              <td style="white-space:nowrap">
+                <% rows.forEach(function (b) { %>
+                  <div class="btn-row" style="margin-bottom:4px">
+                    <form method="post" action="/staff/booking/<%= b.id %>/attended"><button class="btn sm ghost" type="submit">Attended</button></form>
+                    <form method="post" action="/staff/booking/<%= b.id %>/no_show"><button class="btn sm ghost" type="submit">No-show</button></form>
+                    <form method="post" action="/staff/booking/<%= b.id %>/cancel" onsubmit="return confirm('Cancel this booking and email the parent?')"><button class="btn sm danger" type="submit">Cancel</button></form>
+                  </div>
+                <% }); %>
+                <% if (!rows.length) { %>
+                  <div class="btn-row">
+                    <form method="post" action="/staff/slot/<%= s.id %>/<%= s.blocked ? 'unblock' : 'block' %>">
+                      <button class="btn sm ghost" type="submit"><%= s.blocked ? 'Open' : 'Block' %></button>
+                    </form>
+                    <form method="post" action="/staff/slot/<%= s.id %>/delete"><button class="btn sm danger" type="submit">Delete</button></form>
+                  </div>
+                <% } %>
+              </td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</div>
+
+<%- include('../partials/foot') %>
