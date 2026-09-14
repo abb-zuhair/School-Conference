@@ -51,7 +51,7 @@
 
 <div class="basket-bar">
   <span class="count"><%= selected.length %> time<%= selected.length === 1 ? '' : 's' %> selected</span>
-  <a class="btn ghost" href="/e/<%= event.slug %>">Add another teacher</a>
+  <a class="btn ghost" href="/e/<%= event.slug %>"><%= event.type === 'conference' ? 'Add another teacher' : 'Add another appointment' %></a>
   <a class="btn <%= selected.length ? '' : 'disabled' %>" href="/e/<%= event.slug %>/review">Review &amp; confirm</a>
 </div>
 

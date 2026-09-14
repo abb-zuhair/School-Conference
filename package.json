@@ -14,7 +14,8 @@
     "seed": "node src/db/seed.js",
     "reset": "node src/db/reset.js",
     "smoke": "node test/smoke.js",
-    "set-password": "node src/db/set-password.js"
+    "set-password": "node src/db/set-password.js",
+    "features": "node test/features.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -24,6 +25,7 @@
     "express": "^4.21.1",
     "express-session": "^1.18.1",
     "luxon": "^3.5.0",
+    "multer": "^2.4.0",
     "node-cron": "^3.0.3"
   },
   "license": "UNLICENSED",

@@ -4,7 +4,7 @@ const express = require('express');
 const session = require('express-session');
 
 const config = require('./config');
-const { migrate } = require('./db');
+const { migrate, dbPath, isEphemeralStorage } = require('./db');
 const SqliteStore = require('./db/session-store');
 const auth = require('./lib/auth');
 const helpers = require('./lib/helpers');
@@ -95,6 +95,14 @@ const server = app.listen(config.port, () => {
   console.log(`  base URL : ${config.baseUrl}`);
   console.log(`  email    : ${config.graph.enabled ? 'Microsoft Graph enabled' : 'disabled (set GRAPH_* in .env)'}`);
   console.log(`  whatsapp : ${config.wati.enabled ? 'WATI enabled' : 'disabled (set WATI_* in .env)'}`);
+  console.log(`  database : ${dbPath}`);
+  if (isEphemeralStorage()) {
+    console.warn(
+      '\n  ⚠  The database is inside the application directory, so EVERY DEPLOY WIPES IT.\n' +
+        '     Mount a persistent volume and set DATABASE_PATH to a path on it, e.g.\n' +
+        '     Railway: add a Volume at /data, then DATABASE_PATH=/data/app.db\n'
+    );
+  }
   reminders.start();
 });
 

@@ -83,6 +83,7 @@ CREATE TABLE IF NOT EXISTS events (
   cancel_cutoff_hrs INTEGER NOT NULL DEFAULT 2,  -- no self-cancel inside this window
   require_phone     INTEGER NOT NULL DEFAULT 1,
   collect_student   INTEGER NOT NULL DEFAULT 1,  -- ask for student name/grade (off for e.g. campus tours)
+  allow_compare     INTEGER NOT NULL DEFAULT 1,  -- offer the side-by-side teacher grid to parents
   status            TEXT NOT NULL DEFAULT 'draft', -- draft | published | closed | archived
   created_at        TEXT NOT NULL DEFAULT (datetime('now'))
 );

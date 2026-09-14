@@ -47,7 +47,7 @@ the admin exports, and access control.
 
 - Pick a campus, then an open event.
 - Conference events: browse **department → teacher → class**. Service events (uniform, registration) list the counters directly.
-- **Side-by-side compare** — tick two or more teachers and see their evenings on one grid, so a family can line up back-to-back slots.
+- **Side-by-side compare** — tick two or more teachers and see their evenings on one grid, so a family can line up back-to-back slots. Optional per event (**Offer the side-by-side comparison grid**); turn it off for single-desk events and both the button and the URL disappear.
 - Build a basket of times across several teachers and confirm once.
 - Confirmation by email + WhatsApp, each with a private manage link.
 - Cancel online (subject to the event's cutoff), download an `.ics`, or find bookings again at `/lookup` with the email used.
@@ -62,6 +62,7 @@ the admin exports, and access control.
 | No double-booking a full slot | Enforced inside a SQL transaction — two parents clicking at once cannot both win |
 | No booking a locked schedule or a past time | Always on |
 | Cancellation cutoff | Event setting, in hours before the start |
+| Side-by-side compare grid offered | Event setting `allow_compare` |
 | Slot capacity > 1 | Per slot — used for walk-up counters where three families fit in one 20-minute window |
 
 ### Teachers
@@ -76,7 +77,8 @@ the admin exports, and access control.
 ### Administrators
 
 - Campuses and departments; `campus_admin` accounts are scoped to their own campus, `admin` sees everything.
-- Staff and classes, with **CSV import** that creates missing departments, adds classes, and prints one-time passwords.
+- Staff and classes, with **CSV import** — upload the file straight from Excel (or paste rows), with a downloadable template. It creates missing departments, adds classes, prints one-time passwords, and updates rather than duplicates an email that already exists, so the same file can be re-imported after an edit.
+- **Download the database** as a single file from the admin dashboard — a consistent copy, safe to take while parents are booking.
 - Events of four types — conference, uniform, registration, other — each with its own instructions, open/close window and rules.
 - **Create schedules from classes**: tick departments, get one slot sheet per class in one click.
 - **Bulk slot generation** across any number of schedules at once — safe to re-run after adding a teacher, duplicates are skipped.
@@ -136,7 +138,7 @@ Kuwaiti numbers typed as 8 digits get `DEFAULT_COUNTRY_CODE` (965) prepended aut
 ## Deploying to Railway
 
 1. Push this repo to GitHub, then **New Project → Deploy from GitHub repo**.
-2. Add a **Volume** mounted at `/data`.
+2. Add a **Volume** mounted at `/data`. **This is what keeps your data across deploys.** Without it the database lives inside the app folder, which the platform rebuilds on every deploy — campuses, teachers, bookings and your admin account all vanish. The app prints a warning at boot and shows a red banner on the admin dashboard whenever it detects this, so you will not find out the hard way.
 3. Set the variables:
 
 ```

@@ -16,7 +16,7 @@
     <% if (basketCount) { %><a class="btn" href="/e/<%= event.slug %>/review"><%= basketCount %> selected — review</a><% } %>
   </div>
 
-  <% if (teachers.length > 1) { %>
+  <% if (event.allow_compare && teachers.length > 1) { %>
     <form method="get" action="/e/<%= event.slug %>/compare" id="compare-form">
       <p class="muted small">Tick two or more teachers to see their times side by side — handy when you want to line up one evening.</p>
       <div class="grid two">

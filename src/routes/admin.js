@@ -1,6 +1,10 @@
 'use strict';
 const express = require('express');
-const { db } = require('../db');
+const os = require('os');
+const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
+const { db, dbPath, backupTo } = require('../db');
 const auth = require('../lib/auth');
 const sched = require('../lib/scheduling');
 const { parseCsvObjects } = require('../lib/csv');
@@ -19,6 +23,25 @@ const {
 
 const router = express.Router();
 router.use(auth.requireAdmin);
+
+/** CSV uploads are small; keep them in memory and never touch disk. */
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 4 * 1024 * 1024, files: 1 },
+  fileFilter: (req, file, cb) => {
+    const ok = /\.(csv|txt)$/i.test(file.originalname) ||
+      ['text/csv', 'application/csv', 'text/plain', 'application/vnd.ms-excel'].includes(file.mimetype);
+    cb(ok ? null : new Error('Upload a .csv file (save from Excel as "CSV UTF-8").'), ok);
+  },
+});
+
+/** Accept a file, a pasted textarea, or neither — returns the CSV text. */
+function csvFromRequest(req) {
+  if (req.file && req.file.buffer && req.file.buffer.length) {
+    return req.file.buffer.toString('utf8');
+  }
+  return String(req.body.csv || '');
+}
 
 /** campus_admin only ever sees their own campus. */
 function campusFilter(req, alias = 'campus_id') {
@@ -52,7 +75,14 @@ router.get('/', (req, res) => {
     staff: db.prepare(`SELECT COUNT(*) AS n FROM staff WHERE active = 1 AND ${campusFilter(req).sql}`).get(...campusFilter(req).params).n,
     bookings: events.reduce((a, e) => a + e.bookings, 0),
   };
-  res.render('admin/dashboard', { title: 'Admin', events, counts, EVENT_TYPES });
+  const { isEphemeralStorage } = require('../db');
+  res.render('admin/dashboard', {
+    title: 'Admin',
+    events,
+    counts,
+    EVENT_TYPES,
+    storage: { path: dbPath, ephemeral: isEphemeralStorage() },
+  });
 });
 
 /* ---------------------------- campuses ----------------------------- */
@@ -223,10 +253,27 @@ router.get('/staff/import', (req, res) => {
   res.render('admin/staff-import', { title: 'Import staff & classes', result: null, campuses: campusesFor(req) });
 });
 
-router.post('/staff/import', (req, res) => {
+/** Blank CSV with the right headers, so nobody has to guess the column names. */
+router.get('/staff/import/template.csv', (req, res) => {
+  const csv =
+    '﻿name,email,phone,title,role,department,grade,room,classes\n' +
+    'Sara Al-Mutairi,sara@aca.edu.kw,99887766,Grade 6 Mathematics,teacher,Elementary — Mathematics,6,B-204,Grade 6A — Mathematics|Grade 6B — Mathematics\n' +
+    'Uniform Counter 1,uniform1@aca.edu.kw,,,desk,Front Office,,,\n';
+  res.set('Content-Type', 'text/csv; charset=utf-8');
+  res.set('Content-Disposition', 'attachment; filename="staff-import-template.csv"');
+  res.send(csv);
+});
+
+router.post('/staff/import', upload.single('csv_file'), (req, res) => {
   const campusId = Number(req.body.campus_id) || null;
-  const rows = parseCsvObjects(req.body.csv || '');
+  const text = csvFromRequest(req);
+  const rows = parseCsvObjects(text);
   const result = { created: 0, updated: 0, classes: 0, errors: [], passwords: [] };
+
+  if (!rows.length) {
+    result.errors.push('No rows found — choose a .csv file or paste the rows below.');
+    return res.render('admin/staff-import', { title: 'Import staff & classes', result, campuses: campusesFor(req) });
+  }
   const actorId = auth.currentUser(req).id;
 
   for (const [i, row] of rows.entries()) {
@@ -348,10 +395,10 @@ router.post('/events', (req, res) => {
     .prepare(
       `INSERT INTO events (campus_id, type, name, name_ar, slug, description, instructions, instructions_ar,
         opens_at, closes_at, max_per_student, prevent_overlap, allow_cancel, cancel_cutoff_hrs,
-        require_phone, collect_student, status)
+        require_phone, collect_student, allow_compare, status)
        VALUES (@campus_id, @type, @name, @name_ar, @slug, @description, @instructions, @instructions_ar,
         @opens_at, @closes_at, @max_per_student, @prevent_overlap, @allow_cancel, @cancel_cutoff_hrs,
-        @require_phone, @collect_student, @status)`
+        @require_phone, @collect_student, @allow_compare, @status)`
     )
     .run({
       campus_id: campusId,
@@ -370,6 +417,7 @@ router.post('/events', (req, res) => {
       cancel_cutoff_hrs: Number(req.body.cancel_cutoff_hrs || 2),
       require_phone: asBool(req.body.require_phone) ? 1 : 0,
       collect_student: asBool(req.body.collect_student) ? 1 : 0,
+      allow_compare: asBool(req.body.allow_compare) ? 1 : 0,
       status: 'draft',
     });
   auth.audit(auth.currentUser(req).id, 'event_create', { name, slug });
@@ -419,7 +467,8 @@ router.post('/events/:id', loadEvent, (req, res) => {
     `UPDATE events SET name=@name, name_ar=@name_ar, description=@description, instructions=@instructions,
       instructions_ar=@instructions_ar, opens_at=@opens_at, closes_at=@closes_at, max_per_student=@max_per_student,
       prevent_overlap=@prevent_overlap, allow_cancel=@allow_cancel, cancel_cutoff_hrs=@cancel_cutoff_hrs,
-      require_phone=@require_phone, collect_student=@collect_student WHERE id=@id`
+      require_phone=@require_phone, collect_student=@collect_student, allow_compare=@allow_compare
+      WHERE id=@id`
   ).run({
     id: req.event.id,
     name: String(req.body.name || '').trim(),
@@ -435,6 +484,7 @@ router.post('/events/:id', loadEvent, (req, res) => {
     cancel_cutoff_hrs: Number(req.body.cancel_cutoff_hrs || 2),
     require_phone: asBool(req.body.require_phone) ? 1 : 0,
     collect_student: asBool(req.body.collect_student) ? 1 : 0,
+    allow_compare: asBool(req.body.allow_compare) ? 1 : 0,
   });
   req.flash('success', 'Event settings saved.');
   res.redirect(`/admin/events/${req.event.id}`);
@@ -663,6 +713,23 @@ router.post('/notifications/test-reminders', auth.requireRole('admin'), async (r
   const out = await runReminders();
   req.flash('success', `Reminder run finished — ${out.sent} message set(s) processed.`);
   res.redirect('/admin/notifications');
+});
+
+/* --------------------------- back-ups ------------------------------ */
+
+/** Download the whole database as one file — the safety net before any risky change. */
+router.get('/backup.db', auth.requireRole('admin'), async (req, res, next) => {
+  try {
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    const tmp = path.join(os.tmpdir(), `aca-backup-${stamp}.db`);
+    await backupTo(tmp);
+    auth.audit(auth.currentUser(req).id, 'backup_download', { stamp });
+    res.download(tmp, `aca-appointments-${stamp}.db`, () => {
+      fs.unlink(tmp, () => {});
+    });
+  } catch (err) {
+    next(err);
+  }
 });
 
 router.post('/bookings/:id/resend', (req, res) => {

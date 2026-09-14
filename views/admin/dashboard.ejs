@@ -1,6 +1,16 @@
 <%- include('../partials/head') %>
 <%- include('../partials/admin-nav') %>
 
+<% if (storage.ephemeral) { %>
+  <div class="alert error">
+    <strong>Your data will be lost on the next deploy.</strong>
+    The database is at <span class="mono"><%= storage.path %></span>, inside the application folder —
+    container hosts rebuild that folder every time you deploy.
+    Mount a persistent volume (on Railway: Settings → Volumes → Add, mount path <span class="mono">/data</span>)
+    and set <span class="mono">DATABASE_PATH=/data/app.db</span>, then redeploy.
+  </div>
+<% } %>
+
 <div class="stat-row">
   <div class="stat"><div class="n"><%= counts.campuses %></div><div class="l">Campuses</div></div>
   <div class="stat"><div class="n"><%= counts.staff %></div><div class="l">Active staff</div></div>
@@ -41,6 +51,19 @@
       </table>
     </div>
   <% } %>
+</div>
+
+<div class="card tight">
+  <div class="btn-row">
+    <div>
+      <strong class="small">Back-up</strong>
+      <div class="muted small">Downloads the whole database as one file. Safe to run while parents are booking.</div>
+    </div>
+    <div class="spacer" style="margin-inline-start:auto"></div>
+    <% if (user.role === 'admin') { %>
+      <a class="btn ghost sm" href="/admin/backup.db">Download database</a>
+    <% } %>
+  </div>
 </div>
 
 <%- include('../partials/foot') %>

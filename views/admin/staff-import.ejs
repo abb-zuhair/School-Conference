@@ -1,31 +1,62 @@
 <%- include('../partials/head') %>
 <%- include('../partials/admin-nav') %>
 
+<form method="post" action="/admin/staff/import" enctype="multipart/form-data" class="card">
+  <div class="card-head">
+    <div>
+      <h1>Import staff &amp; classes</h1>
+      <div class="muted small">Upload a CSV exported from Excel, or paste the rows.</div>
+    </div>
+    <div class="spacer"></div>
+    <a class="btn ghost sm" href="/admin/staff/import/template.csv">Download template</a>
+  </div>
+
+  <div class="field">
+    <label for="campus_id">Campus for these staff *</label>
+    <select id="campus_id" name="campus_id" required>
+      <% campuses.forEach(function (c) { %><option value="<%= c.id %>"><%= c.name %></option><% }); %>
+    </select>
+  </div>
+
+  <div class="field">
+    <label for="csv_file">CSV file</label>
+    <input id="csv_file" name="csv_file" type="file" accept=".csv,text/csv,text/plain">
+    <div class="hint">
+      In Excel: <strong>File → Save As → CSV UTF-8 (Comma delimited)</strong>. Plain “CSV” mangles Arabic names.
+      Max 4&nbsp;MB.
+    </div>
+    <div id="file-chosen" class="hint" hidden></div>
+  </div>
+
+  <details>
+    <summary class="muted small" style="cursor:pointer;margin:6px 0 12px">…or paste the rows instead</summary>
+    <textarea name="csv" rows="10" class="mono" placeholder="name,email,phone,title,role,department,grade,room,classes"></textarea>
+  </details>
+
+  <div class="btn-row"><button class="btn" type="submit">Import</button></div>
+</form>
+
 <div class="card">
-  <h1>Import staff &amp; classes</h1>
-  <p class="muted small">Paste CSV with a header row. Recognised columns:</p>
-  <pre class="mono" style="background:#f6f9fb;padding:12px;border-radius:8px;overflow-x:auto">name,email,phone,title,role,department,grade,room,classes
+  <h2>Column reference</h2>
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>Column</th><th>Required</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">name</td><td>yes</td><td>Full name as parents should see it</td></tr>
+        <tr><td class="mono">email</td><td>yes</td><td>School email — also the sign-in username. An email already in the system is <strong>updated</strong>, not duplicated</td></tr>
+        <tr><td class="mono">phone</td><td>no</td><td>Mobile</td></tr>
+        <tr><td class="mono">title</td><td>no</td><td>e.g. “Grade 6 Mathematics”</td></tr>
+        <tr><td class="mono">role</td><td>no</td><td><span class="mono">teacher</span> (default), <span class="mono">desk</span>, <span class="mono">campus_admin</span>, <span class="mono">admin</span></td></tr>
+        <tr><td class="mono">department</td><td>no</td><td>Created on the chosen campus if it doesn't exist yet</td></tr>
+        <tr><td class="mono">grade</td><td>no</td><td>Applied to the classes in this row</td></tr>
+        <tr><td class="mono">room</td><td>no</td><td>Applied to the classes in this row</td></tr>
+        <tr><td class="mono">classes</td><td>no</td><td>One or more class names separated by <span class="mono">|</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <pre class="mono" style="background:#f6f9fb;padding:12px;border-radius:8px;overflow-x:auto;margin-top:14px">name,email,phone,title,role,department,grade,room,classes
 Sara Al-Mutairi,sara@aca.edu.kw,99887766,Grade 6 Maths,teacher,Elementary — Mathematics,6,B-204,Grade 6A — Mathematics|Grade 6B — Mathematics
 Uniform Counter 1,uniform1@aca.edu.kw,,,desk,Front Office,,,</pre>
-  <p class="muted small">
-    <code>classes</code> holds one or more class names separated by <code>|</code>.
-    Departments that don't exist yet are created on the chosen campus.
-    Existing emails are updated rather than duplicated.
-  </p>
-
-  <form method="post" action="/admin/staff/import">
-    <div class="field">
-      <label>Campus for these staff</label>
-      <select name="campus_id" required>
-        <% campuses.forEach(function (c) { %><option value="<%= c.id %>"><%= c.name %></option><% }); %>
-      </select>
-    </div>
-    <div class="field">
-      <label>CSV</label>
-      <textarea name="csv" rows="12" class="mono" required placeholder="name,email,..."></textarea>
-    </div>
-    <button class="btn" type="submit">Import</button>
-  </form>
 </div>
 
 <% if (result) { %>
@@ -44,7 +75,7 @@ Uniform Counter 1,uniform1@aca.edu.kw,,,desk,Front Office,,,</pre>
 
     <% if (result.passwords.length) { %>
       <h3>Temporary passwords</h3>
-      <p class="muted small">Copy these now — they are not shown again. Everyone is forced to change it at first sign-in.</p>
+      <p class="muted small">Copy these now — they are not shown again. Everyone is forced to change theirs at first sign-in.</p>
       <div class="table-wrap">
         <table class="data">
           <thead><tr><th>Email</th><th>Temporary password</th></tr></thead>
@@ -55,8 +86,30 @@ Uniform Counter 1,uniform1@aca.edu.kw,,,desk,Front Office,,,</pre>
           </tbody>
         </table>
       </div>
+      <div class="btn-row" style="margin-top:10px">
+        <button class="btn ghost sm" type="button" onclick="copyPasswords()">Copy as CSV</button>
+      </div>
+      <script>
+        function copyPasswords() {
+          var rows = [['email','password']].concat(
+            <%- JSON.stringify(result.passwords.map(function (p) { return [p.email, p.password]; })) %>
+          );
+          navigator.clipboard.writeText(rows.map(function (r) { return r.join(','); }).join('\n'));
+        }
+      </script>
     <% } %>
   </div>
 <% } %>
+
+<script>
+  var input = document.getElementById('csv_file');
+  var chosen = document.getElementById('file-chosen');
+  if (input) input.addEventListener('change', function () {
+    if (!input.files.length) { chosen.hidden = true; return; }
+    var f = input.files[0];
+    chosen.textContent = 'Selected: ' + f.name + ' (' + Math.ceil(f.size / 1024) + ' KB)';
+    chosen.hidden = false;
+  });
+</script>
 
 <%- include('../partials/foot') %>

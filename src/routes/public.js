@@ -196,6 +196,8 @@ router.get('/e/:slug/s/:scheduleId', loadEvent, requireOpenEvent, (req, res) => 
 
 /** Side-by-side view of several teachers, the way MyConferenceTime lets you line up a family's evening. */
 router.get('/e/:slug/compare', loadEvent, requireOpenEvent, (req, res) => {
+  if (!req.event.allow_compare) return res.redirect(`/e/${req.event.slug}`);
+
   const ids = String(req.query.ids || '')
     .split(',')
     .map(Number)
