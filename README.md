@@ -152,7 +152,9 @@ SCHOOL_TIMEZONE=Asia/Kuwait
 
 4. Add your custom domain. `railway.json` already points the healthcheck at `/healthz`.
 
-`better-sqlite3` builds on Railway's Nixpacks image without extra configuration. The volume is what makes the database survive a redeploy — without it, every deploy starts empty.
+The volume is what makes the database survive a redeploy — without it, every deploy starts empty.
+
+**Node version matters.** `better-sqlite3` ships prebuilt binaries for Node 20 and 22 but not for Node 24, and Nixpacks has no C toolchain to compile it from source — so on Node 24 the build dies with `node-gyp ERR! not ok`. `engines` is pinned to `22.x` and `.nvmrc` says `22`, which is enough for Nixpacks. If Railway still picks a newer Node, set the variable `NIXPACKS_NODE_VERSION=22` and redeploy.
 
 **Back-ups.** SQLite is one file. A nightly copy is enough:
 
