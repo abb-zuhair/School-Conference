@@ -156,6 +156,18 @@ The volume is what makes the database survive a redeploy — without it, every d
 
 **Node version matters.** `better-sqlite3` ships prebuilt binaries for Node 20 and 22 but not for Node 24, and Nixpacks has no C toolchain to compile it from source — so on Node 24 the build dies with `node-gyp ERR! not ok`. `engines` is pinned to `22.x` and `.nvmrc` says `22`, which is enough for Nixpacks. If Railway still picks a newer Node, set the variable `NIXPACKS_NODE_VERSION=22` and redeploy.
 
+**Locked out of the admin account?** The bootstrap admin is only created when no
+admin exists, so changing `ADMIN_PASSWORD` afterwards does nothing. Open the service's
+**Console** tab on Railway (or any shell on the host) and run:
+
+```bash
+npm run set-password -- zuhair@sama.com.kw "a-new-password"
+```
+
+It resets the password on an existing account, or creates the account as an admin if
+the email isn't there. Requires the same `DATABASE_PATH` the app uses, so the volume
+must be mounted.
+
 **Back-ups.** SQLite is one file. A nightly copy is enough:
 
 ```bash
