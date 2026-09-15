@@ -1,0 +1,57 @@
+<%- include('../partials/head', { narrow: true }) %>
+
+<div class="crumbs"><a href="/admin">Admin</a><span>›</span><a href="/admin/events/<%= event.id %>"><%= event.name %></a><span>›</span>Delete</div>
+
+<div class="card">
+  <h1>Delete “<%= event.name %>”</h1>
+  <p class="muted">This cannot be undone. Everything below goes with it.</p>
+
+  <% if (error) { %><div class="alert error"><%= error %></div><% } %>
+
+  <div class="stat-row">
+    <div class="stat"><div class="n"><%= footprint.schedules %></div><div class="l">Schedules</div></div>
+    <div class="stat"><div class="n"><%= footprint.slots %></div><div class="l">Slots</div></div>
+    <div class="stat"><div class="n"><%= footprint.booked %></div><div class="l">Live bookings</div></div>
+    <div class="stat"><div class="n"><%= footprint.bookings %></div><div class="l">Booking records</div></div>
+  </div>
+
+  <% if (footprint.booked > 0) { %>
+    <div class="alert error">
+      <strong><%= footprint.booked %> famil<%= footprint.booked === 1 ? 'y has' : 'ies have' %> an appointment booked.</strong>
+      Deleting this event cancels every one of them.
+    </div>
+  <% } %>
+
+  <div class="alert info">
+    <strong>Consider closing it instead.</strong>
+    Setting the status to <span class="mono">closed</span> stops new bookings while keeping the history and the parents' confirmation links working.
+    <span class="mono">archived</span> also hides it from the admin list. Deleting is only right when the event was created by mistake.
+  </div>
+
+  <form method="post" action="/admin/events/<%= event.id %>/delete">
+    <% if (footprint.booked > 0) { %>
+      <div class="check">
+        <input type="checkbox" id="cancel_bookings" name="cancel_bookings" value="1">
+        <label for="cancel_bookings">Yes — cancel all <%= footprint.booked %> booking(s) and delete the event</label>
+      </div>
+      <div class="check">
+        <input type="checkbox" id="notify" name="notify" value="1" checked>
+        <label for="notify">Tell the parents their appointment is cancelled (email and WhatsApp)</label>
+      </div>
+    <% } %>
+
+    <div class="field" style="margin-top:14px">
+      <label for="confirm_name">Type the event name to confirm</label>
+      <input id="confirm_name" name="confirm_name" type="text" autocomplete="off" required
+             placeholder="<%= event.name %>">
+      <div class="hint">Exactly as it appears above: <span class="mono"><%= event.name %></span></div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn danger" type="submit">Delete this event permanently</button>
+      <a class="btn ghost" href="/admin/events/<%= event.id %>">Cancel</a>
+    </div>
+  </form>
+</div>
+
+<%- include('../partials/foot') %>

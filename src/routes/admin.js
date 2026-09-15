@@ -499,6 +499,73 @@ router.post('/events/:id/status', loadEvent, (req, res) => {
   res.redirect(`/admin/events/${req.event.id}`);
 });
 
+/* ------------------------- deleting events -------------------------- */
+
+function eventFootprint(eventId) {
+  return db
+    .prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM schedules WHERE event_id = @id) AS schedules,
+         (SELECT COUNT(*) FROM slots sl JOIN schedules s ON s.id = sl.schedule_id WHERE s.event_id = @id) AS slots,
+         (SELECT COUNT(*) FROM bookings WHERE event_id = @id AND status = 'booked') AS booked,
+         (SELECT COUNT(*) FROM bookings WHERE event_id = @id) AS bookings`
+    )
+    .get({ id: eventId });
+}
+
+/** Confirmation page — shows exactly what disappears before anything is touched. */
+router.get('/events/:id/delete', loadEvent, auth.requireRole('admin'), (req, res) => {
+  res.render('admin/event-delete', {
+    title: `Delete ${req.event.name}`,
+    footprint: eventFootprint(req.event.id),
+    error: null,
+  });
+});
+
+router.post('/events/:id/delete', loadEvent, auth.requireRole('admin'), (req, res) => {
+  const user = auth.currentUser(req);
+  const footprint = eventFootprint(req.event.id);
+  const typed = String(req.body.confirm_name || '').trim();
+
+  const refuse = (error) =>
+    res.status(400).render('admin/event-delete', {
+      title: `Delete ${req.event.name}`,
+      footprint,
+      error,
+    });
+
+  // Typing the name is the guard against deleting the wrong event from a stale tab.
+  if (typed !== req.event.name) {
+    return refuse('The name you typed does not match. Copy it exactly as shown to confirm.');
+  }
+  if (footprint.booked > 0 && !asBool(req.body.cancel_bookings)) {
+    return refuse(
+      `This event has ${footprint.booked} live booking(s). Tick the box to confirm they should be cancelled as well.`
+    );
+  }
+
+  const notify = asBool(req.body.notify);
+  const cancelled = footprint.booked > 0 ? cancelBookingsFor('event_id', req.event.id, user, notify) : 0;
+
+  db.prepare('DELETE FROM events WHERE id = ?').run(req.event.id);
+  auth.audit(user.id, 'event_delete', {
+    eventId: req.event.id,
+    name: req.event.name,
+    slug: req.event.slug,
+    ...footprint,
+    cancelled,
+    notified: notify,
+  });
+
+  req.flash(
+    'success',
+    `“${req.event.name}” deleted — ${footprint.schedules} schedule(s) and ${footprint.slots} slot(s) removed` +
+      (cancelled ? `, ${cancelled} booking(s) cancelled${notify ? ' and the parents notified' : ''}` : '') +
+      '.'
+  );
+  return res.redirect('/admin');
+});
+
 /* --------------------------- schedules ----------------------------- */
 
 /** Create one schedule per active class for the chosen departments (conference events). */
@@ -562,17 +629,51 @@ router.post('/events/:id/schedules', loadEvent, (req, res) => {
   res.redirect(`/admin/events/${req.event.id}`);
 });
 
+/**
+ * Cancel every live booking on a schedule or event, notifying the parents.
+ * Returns how many were cancelled. Done before a delete so families are told
+ * rather than silently dropped.
+ */
+function cancelBookingsFor(where, id, actor, notifyParents) {
+  const rows = db
+    .prepare(`SELECT id FROM bookings WHERE ${where} = ? AND status = 'booked'`)
+    .all(id);
+  for (const row of rows) {
+    sched.cancelBooking(row.id, 'admin');
+    if (notifyParents) {
+      const updated = sched.bookingById(row.id);
+      if (updated) notifyAsync(updated, 'cancellation');
+    }
+  }
+  void actor;
+  return rows.length;
+}
+
 router.post('/schedules/:id/delete', (req, res) => {
+  const user = auth.currentUser(req);
   const schedule = sched.getSchedule(Number(req.params.id));
   if (!schedule) return res.redirect('/admin');
-  if (!auth.canAccessCampus(auth.currentUser(req), schedule.campus_id)) return res.status(403).send('Not allowed');
+  if (!auth.canAccessCampus(user, schedule.campus_id)) return res.status(403).send('Not allowed');
+
   const booked = db.prepare("SELECT COUNT(*) AS n FROM bookings WHERE schedule_id = ? AND status = 'booked'").get(schedule.id).n;
-  if (booked > 0) {
-    req.flash('error', 'That schedule has live bookings — cancel them first.');
-  } else {
-    db.prepare('DELETE FROM schedules WHERE id = ?').run(schedule.id);
-    req.flash('success', 'Schedule deleted.');
+
+  if (booked > 0 && !asBool(req.body.cancel_bookings)) {
+    req.flash(
+      'error',
+      `“${schedule.display_name}” has ${booked} live booking(s). Tick “cancel the bookings too” to delete it — the parents will be told.`
+    );
+    return res.redirect(`/admin/events/${schedule.event_id}`);
   }
+
+  const cancelled = booked > 0 ? cancelBookingsFor('schedule_id', schedule.id, user, asBool(req.body.notify)) : 0;
+  db.prepare('DELETE FROM schedules WHERE id = ?').run(schedule.id);
+  auth.audit(user.id, 'schedule_delete', { scheduleId: schedule.id, name: schedule.display_name, cancelled });
+  req.flash(
+    'success',
+    cancelled
+      ? `Schedule deleted. ${cancelled} booking(s) were cancelled${asBool(req.body.notify) ? ' and the parents notified' : ''}.`
+      : 'Schedule deleted.'
+  );
   return res.redirect(`/admin/events/${schedule.event_id}`);
 });
 

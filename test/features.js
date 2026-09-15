@@ -220,6 +220,106 @@ async function follow(j, path) {
   r = await follow(a, '/admin/events/1');
   check('no selection is reported', r.text.includes('Select at least one department or schedule'));
 
+  /* ---------------- deleting schedules ---------------- */
+  r = await req(a, 'GET', '/admin/events/1');
+  const allScheduleIds = [...r.text.matchAll(/name="schedule_ids" value="(\d+)"/g)].map((m) => Number(m[1]));
+  const emptySchedule = allScheduleIds[allScheduleIds.length - 1];
+
+  r = await req(a, 'POST', `/admin/schedules/${emptySchedule}/delete`);
+  check('empty schedule deletes', r.status === 302);
+  r = await req(a, 'GET', '/admin/events/1');
+  check('deleted schedule is gone', !r.text.includes(`name="schedule_ids" value="${emptySchedule}"`));
+
+  // Book a conference slot so a schedule has something to guard.
+  const confParent = jar();
+  r = await req(confParent, 'GET', '/e/ptc-term1-hawally');
+  const confDept = (r.text.match(/\/d\/(\d+)/) || [])[1];
+  r = await req(confParent, 'GET', `/e/ptc-term1-hawally/d/${confDept}`);
+  const confSchedule = [...r.text.matchAll(/\/s\/(\d+)"/g)].map((m) => Number(m[1]))[0];
+  r = await req(confParent, 'GET', `/e/ptc-term1-hawally/s/${confSchedule}`);
+  const confSlot = [...r.text.matchAll(/name="slot_id" value="(\d+)"/g)].map((m) => Number(m[1]))[0];
+  await req(confParent, 'POST', '/e/ptc-term1-hawally/select', { slot_id: confSlot, action: 'add' });
+  r = await req(confParent, 'POST', '/e/ptc-term1-hawally/confirm', {
+    parent_name: 'Guard Test', parent_email: 'guard@example.com',
+    parent_phone: '55990011', student_name: 'Guard Child',
+  });
+  check('a conference booking exists to guard', r.status === 302, `status ${r.status}`);
+
+  // Find a schedule that actually holds a booking.
+  r = await req(a, 'GET', '/admin/events/1');
+  const deleteFormsWithBookings = [...r.text.matchAll(/action="\/admin\/schedules\/(\d+)\/delete"[\s\S]{0,400}?cancel_bookings/g)]
+    .map((m) => Number(m[1]));
+  check('a booked schedule offers the guarded delete', deleteFormsWithBookings.length > 0, `${deleteFormsWithBookings.length}`);
+
+  if (deleteFormsWithBookings.length) {
+    const target = deleteFormsWithBookings[0];
+    r = await req(a, 'POST', `/admin/schedules/${target}/delete`); // no opt-in
+    r = await follow(a, '/admin/events/1');
+    check('booked schedule refuses a bare delete', r.text.includes('live booking'));
+    check('booked schedule survived the refusal', r.text.includes(`/admin/schedules/${target}/delete`));
+
+    r = await req(a, 'POST', `/admin/schedules/${target}/delete`, { cancel_bookings: '1', notify: '' });
+    check('booked schedule deletes with the opt-in', r.status === 302);
+    r = await follow(a, '/admin/events/1');
+    check('cancellation is reported', /booking\(s\) were cancelled/.test(r.text));
+    check('booked schedule is gone', !r.text.includes(`action="/admin/schedules/${target}/delete"`));
+  }
+  /* ---------------- deleting events ---------------- */
+  r = await req(a, 'GET', '/admin/events/2/delete');
+  check('delete confirmation page renders', r.status === 200 && r.text.includes('cannot be undone'));
+  check('confirmation shows what is lost', /<div class="l">Schedules<\/div>/.test(r.text));
+  check('confirmation suggests closing instead', r.text.includes('Consider closing it instead'));
+
+  r = await req(a, 'POST', '/admin/events/2/delete', { confirm_name: 'wrong name' });
+  check('wrong name is refused', r.status === 400 && r.text.includes('does not match'));
+
+  r = await req(a, 'GET', '/admin/events/2');
+  check('event survived the wrong name', r.status === 200);
+
+  const unescape = (s) =>
+    String(s || '')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'");
+  const ev2 = await req(a, 'GET', '/admin/events/2');
+  const ev2Name = unescape((ev2.text.match(/<input name="name" value="([^"]+)"/) || [])[1]);
+  check('event name read back for confirmation', Boolean(ev2Name));
+
+  // Book a slot on event 2 so the live-booking guard has something to catch.
+  const parent = jar();
+  r = await req(parent, 'GET', '/e/uniform-hawally');
+  const uSched2 = Number((r.text.match(/\/s\/(\d+)/) || [])[1]);
+  r = await req(parent, 'GET', `/e/uniform-hawally/s/${uSched2}`);
+  const uSlot2 = [...r.text.matchAll(/name="slot_id" value="(\d+)"/g)].map((m) => Number(m[1]))[0];
+  await req(parent, 'POST', '/e/uniform-hawally/select', { slot_id: uSlot2, action: 'add' });
+  r = await req(parent, 'POST', '/e/uniform-hawally/confirm', {
+    parent_name: 'Delete Test', parent_email: 'deletetest@example.com',
+    parent_phone: '55112233', student_name: 'Delete Child',
+  });
+  check('a booking exists on the event to be deleted', r.status === 302);
+
+  r = await req(a, 'POST', '/admin/events/2/delete', { confirm_name: ev2Name });
+  check('live bookings block deletion', r.status === 400 && r.text.includes('live booking'));
+
+  r = await req(a, 'POST', '/admin/events/2/delete', { confirm_name: ev2Name, cancel_bookings: '1' });
+  check('event deletes with the opt-in', r.status === 302 && String(r.location).includes('/admin'));
+
+  r = await req(a, 'GET', '/admin/events/2');
+  check('deleted event is gone from admin', r.status === 404);
+  r = await req(jar(), 'GET', '/e/uniform-hawally');
+  check('deleted event is gone for parents', r.status === 404);
+  r = await req(parent, 'POST', '/lookup', { parent_email: 'deletetest@example.com' });
+  check('its bookings went with it', r.status === 200 && !r.text.includes('Delete Child'));
+
+  /* ---------------- non-admins cannot delete ---------------- */
+  const teacher2 = jar();
+  await req(teacher2, 'POST', '/staff/login', { email: 'laura.bennett@example.aca.edu.kw', password: 'Welcome123!' });
+  await req(teacher2, 'POST', '/staff/password', { new_password: 'LauraPass123', confirm_password: 'LauraPass123' });
+  r = await req(teacher2, 'GET', '/admin/events/1/delete');
+  check('teacher cannot open event delete', r.status === 403 || r.status === 302, `status ${r.status}`);
+
   /* ---------------- backup download ---------------- */
   r = await req(a, 'GET', '/admin/backup.db');
   check('backup downloads', r.status === 200, `status ${r.status}`);

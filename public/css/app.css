@@ -173,6 +173,13 @@ textarea { min-height: 92px; resize: vertical; }
 fieldset { border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin: 0 0 16px; }
 legend { font-weight: 600; font-size: .88rem; padding: 0 6px; }
 
+/* ---------------- danger zone ---------------- */
+
+.danger-zone { border-color: #e6c3c5; background: #fffafa; }
+.danger-zone h2 { color: var(--bad); }
+details > summary.btn { list-style: none; cursor: pointer; }
+details > summary.btn::-webkit-details-marker { display: none; }
+
 /* ---------------- department picker ---------------- */
 
 .dept-picker {

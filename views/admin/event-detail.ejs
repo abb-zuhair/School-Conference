@@ -217,9 +217,28 @@
             <td><%= s.stats.booked %> <span class="muted small">/ <%= s.stats.capacity %></span></td>
             <td><% if (s.locked) { %><span class="badge bad">locked</span><% } else { %><span class="badge ok">open</span><% } %></td>
             <td style="text-align:end">
-              <form method="post" action="/admin/schedules/<%= s.id %>/delete" onsubmit="return confirm('Delete this schedule and all its empty slots?')">
-                <button class="btn sm danger" type="submit">Delete</button>
-              </form>
+              <% if (s.stats.booked > 0) { %>
+                <details>
+                  <summary class="btn sm danger" style="display:inline-flex">Delete…</summary>
+                  <form method="post" action="/admin/schedules/<%= s.id %>/delete" style="text-align:start;padding:10px 0"
+                        onsubmit="return confirm('Cancel <%= s.stats.booked %> booking(s) and delete this schedule?')">
+                    <div class="check">
+                      <input type="checkbox" id="cb<%= s.id %>" name="cancel_bookings" value="1" required>
+                      <label for="cb<%= s.id %>">Cancel its <%= s.stats.booked %> booking(s) too</label>
+                    </div>
+                    <div class="check">
+                      <input type="checkbox" id="nt<%= s.id %>" name="notify" value="1" checked>
+                      <label for="nt<%= s.id %>">Tell the parents</label>
+                    </div>
+                    <button class="btn sm danger" type="submit">Delete schedule</button>
+                  </form>
+                </details>
+              <% } else { %>
+                <form method="post" action="/admin/schedules/<%= s.id %>/delete"
+                      onsubmit="return confirm('Delete this schedule and its empty slots?')">
+                  <button class="btn sm danger" type="submit">Delete</button>
+                </form>
+              <% } %>
             </td>
           </tr>
         <% }); %>
@@ -251,5 +270,17 @@
   <div class="check"><input type="checkbox" id="e_cmp" name="allow_compare" <%= event.allow_compare ? 'checked' : '' %>><label for="e_cmp">Offer the side-by-side comparison grid to parents</label></div>
   <button class="btn" type="submit">Save settings</button>
 </form>
+
+<% if (user.role === 'admin') { %>
+  <div class="card danger-zone">
+    <h2>Delete this event</h2>
+    <p class="muted small">
+      Removes the event, its <%= schedules.length %> schedule(s), every slot and every booking record.
+      To simply stop new sign-ups, set the status to <span class="mono">closed</span> above instead — that keeps the
+      history and parents' links working.
+    </p>
+    <a class="btn danger" href="/admin/events/<%= event.id %>/delete">Delete event…</a>
+  </div>
+<% } %>
 
 <%- include('../partials/foot') %>
