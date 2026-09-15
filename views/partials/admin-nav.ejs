@@ -3,7 +3,8 @@
     <a class="btn sm <%= path === '/admin' ? '' : 'ghost' %>" href="/admin">Overview</a>
     <a class="btn sm <%= path.indexOf('/admin/events') === 0 ? '' : 'ghost' %>" href="/admin/events/new">New event</a>
     <a class="btn sm <%= path === '/admin/campuses' ? '' : 'ghost' %>" href="/admin/campuses">Campuses &amp; departments</a>
-    <a class="btn sm <%= path === '/admin/staff' ? '' : 'ghost' %>" href="/admin/staff">Staff &amp; classes</a>
+    <a class="btn sm <%= path === '/admin/staff' ? '' : 'ghost' %>" href="/admin/staff">Staff</a>
+    <a class="btn sm <%= path === '/admin/classes' ? '' : 'ghost' %>" href="/admin/classes">Classes</a>
     <a class="btn sm <%= path === '/admin/staff/import' ? '' : 'ghost' %>" href="/admin/staff/import">Import CSV</a>
     <a class="btn sm <%= path === '/admin/notifications' ? '' : 'ghost' %>" href="/admin/notifications">Message log</a>
     <% if (user && user.role === 'admin') { %>

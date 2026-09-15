@@ -173,6 +173,33 @@ textarea { min-height: 92px; resize: vertical; }
 fieldset { border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin: 0 0 16px; }
 legend { font-weight: 600; font-size: .88rem; padding: 0 6px; }
 
+/* ---------------- bulk action bar ---------------- */
+
+.bulk-bar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: var(--navy-soft);
+  border: 1px solid #c6dbe9;
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+}
+.bulk-bar label { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-weight: 500; }
+.bulk-bar select { padding: 5px 8px; font-size: .85rem; }
+.bulk-sep { width: 1px; align-self: stretch; background: #c6dbe9; }
+.bulk-danger { position: relative; }
+.bulk-danger-body {
+  position: absolute; inset-inline-end: 0; top: calc(100% + 6px);
+  width: 290px; background: #fff; border: 1px solid #e6c3c5;
+  border-radius: 10px; padding: 12px 14px; box-shadow: var(--shadow); z-index: 4;
+}
+table.data td input[type=checkbox], table.data th input[type=checkbox] { width: auto; }
+
 /* ---------------- danger zone ---------------- */
 
 .danger-zone { border-color: #e6c3c5; background: #fffafa; }

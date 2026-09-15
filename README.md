@@ -87,6 +87,7 @@ forged `state`.
 ### Administrators
 
 - Campuses and departments; `campus_admin` accounts are scoped to their own campus, `admin` sees everything.
+- **Bulk edits.** Tick staff on the Staff page to move them to another campus or department, activate or deactivate them, or delete them. A separate **Classes** page lists every class with campus/department/teacher filters and the same tick-and-act pattern — move a set of classes to a different teacher, or delete them. Deleting anything that holds live bookings needs an explicit tick and offers to notify the parents. You cannot deactivate or delete your own account, or the last administrator.
 - Staff and classes, with **CSV import** — upload the file straight from Excel (or paste rows), with a downloadable template. It creates missing departments, adds classes, prints one-time passwords, and updates rather than duplicates an email that already exists, so the same file can be re-imported after an edit.
 - **Download the database** as a single file from the admin dashboard — a consistent copy, safe to take while parents are booking.
 - Events of four types — conference, uniform, registration, other — each with its own instructions, open/close window and rules.

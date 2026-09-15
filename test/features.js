@@ -36,7 +36,14 @@ async function req(j, method, path, body, isForm) {
     payload = body;
   } else if (body) {
     headers['Content-Type'] = 'application/x-www-form-urlencoded';
-    payload = new URLSearchParams(body).toString();
+    // Repeat the key for arrays, the way a browser posts several checkboxes —
+    // URLSearchParams would otherwise join them into one comma-separated value.
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(body)) {
+      if (Array.isArray(v)) v.forEach((item) => params.append(k, String(item)));
+      else params.append(k, String(v));
+    }
+    payload = params.toString();
   }
   void isForm;
   const res = await fetch(`${BASE}${path}`, { method, headers, body: payload, redirect: 'manual' });
@@ -59,7 +66,9 @@ async function follow(j, path) {
   console.log(`Feature test against ${BASE}\n`);
   const a = jar();
 
+  // A previous run may already have changed the bootstrap password; accept either.
   let r = await req(a, 'POST', '/staff/login', { email: ADMIN_EMAIL, password: ADMIN_PASSWORD });
+  if (r.status !== 302) r = await req(a, 'POST', '/staff/login', { email: ADMIN_EMAIL, password: 'AdminPass123' });
   check('admin signs in', r.status === 302);
   r = await follow(a, '/admin');
   if (r.text.includes('Change password')) {
@@ -219,6 +228,132 @@ async function follow(j, path) {
   });
   r = await follow(a, '/admin/events/1');
   check('no selection is reported', r.text.includes('Select at least one department or schedule'));
+
+  /* ---------------- bulk staff actions ---------------- */
+  r = await req(a, 'GET', '/admin/staff');
+  check('staff list has selection checkboxes', r.text.includes('name="staff_ids"'));
+  check('staff list has a bulk bar', r.text.includes('id="staff-bulk-bar"'));
+
+  const staffIds = [...r.text.matchAll(/name="staff_ids" value="(\d+)"/g)].map((m) => Number(m[1]));
+  check('staff rows are selectable', staffIds.length > 3, `${staffIds.length}`);
+
+  const pickValues = (html, selectName) => {
+    const block = html.match(new RegExp(`name="${selectName}"[\\s\\S]*?<\\/select>`));
+    return block ? (block[0].match(/value="(\d+)"/g) || []).map((v) => Number(v.match(/\d+/)[0])) : [];
+  };
+  const campusIds = pickValues(r.text, 'campus_id');
+  const salmiya = campusIds[1];
+
+  // Two imported teachers we can shuffle freely — never the signed-in admin,
+  // and never anyone the booking tests below rely on.
+  const idFor = (email) => {
+    const i = r.text.indexOf(email);
+    if (i === -1) return null;
+    const before = r.text.slice(Math.max(0, i - 1200), i);
+    const m = [...before.matchAll(/name="staff_ids" value="(\d+)"/g)].pop();
+    return m ? Number(m[1]) : null;
+  };
+  const movable = [idFor('import.tester@example.aca.edu.kw'), idFor('nadia.test@example.aca.edu.kw')].filter(Boolean);
+  check('two imported teachers found to move', movable.length === 2, `${movable.length}`);
+  check('the signed-in admin is not among them', !movable.includes(1));
+
+  r = await req(a, 'POST', '/admin/staff/bulk', {
+    staff_ids: movable, action: 'campus', campus_id: String(salmiya),
+  });
+  check('bulk campus change submits', r.status === 302);
+  r = await follow(a, '/admin/staff');
+  check('campus change is reported', r.text.includes('2 staff moved'));
+
+  const rowFor = (html, id) => {
+    const i = html.indexOf(`name="staff_ids" value="${id}"`);
+    return i === -1 ? '' : html.slice(i, i + 900);
+  };
+  check('first staff member moved campus', rowFor(r.text, movable[0]).includes('ACA Salmiya'));
+  check('second staff member moved campus', rowFor(r.text, movable[1]).includes('ACA Salmiya'));
+  check('cross-campus department was cleared', /<td class="small">—<\/td>/.test(rowFor(r.text, movable[0])));
+
+  // Move them into a department — the department's campus should follow.
+  const deptIds2 = pickValues(r.text, 'department_id');
+  r = await req(a, 'POST', '/admin/staff/bulk', {
+    staff_ids: movable, action: 'department', department_id: String(deptIds2[0]),
+  });
+  r = await follow(a, '/admin/staff');
+  check('bulk department change is reported', /staff moved to /.test(r.text));
+  check('campus followed the department back', rowFor(r.text, movable[0]).includes('ACA Hawally'));
+
+  r = await req(a, 'POST', '/admin/staff/bulk', { staff_ids: movable, action: 'deactivate' });
+  r = await follow(a, '/admin/staff');
+  check('bulk deactivate is reported', r.text.includes('2 staff deactivated'));
+  r = await req(a, 'POST', '/admin/staff/bulk', { staff_ids: movable, action: 'activate' });
+  r = await follow(a, '/admin/staff');
+  check('bulk activate is reported', r.text.includes('2 staff activated'));
+
+  r = await req(a, 'POST', '/admin/staff/bulk', { staff_ids: [], action: 'deactivate' });
+  r = await follow(a, '/admin/staff');
+  check('empty selection is refused', r.text.includes('Tick at least one'));
+
+  // Safety rails around the signed-in admin
+  const adminId = staffIds.find((id) => rowFor(r.text, id).includes('zuhair@sama.com.kw'));
+  check('the admin row was located', Boolean(adminId));
+
+  r = await req(a, 'POST', '/admin/staff/bulk', { staff_ids: [adminId], action: 'deactivate' });
+  r = await follow(a, '/admin/staff');
+  check('cannot deactivate yourself', r.text.includes('cannot deactivate your own account'));
+  check('still signed in after that refusal', r.text.includes('Add or update a staff member'));
+
+  r = await req(a, 'POST', '/admin/staff/bulk', { staff_ids: [adminId], action: 'delete' });
+  r = await follow(a, '/admin/staff');
+  check('cannot delete your own account', r.text.includes('cannot delete your own account'));
+
+  r = await req(a, 'POST', '/admin/staff/bulk', { staff_ids: staffIds.filter((id) => id !== adminId), action: 'deactivate' });
+  r = await follow(a, '/admin/staff');
+  check('can deactivate everyone else', /staff deactivated/.test(r.text));
+  await req(a, 'POST', '/admin/staff/bulk', { staff_ids: staffIds.filter((id) => id !== adminId), action: 'activate' });
+
+  // Delete a teacher with no bookings.
+  r = await req(a, 'POST', '/admin/staff/bulk', { staff_ids: [movable[0]], action: 'delete' });
+  r = await follow(a, '/admin/staff');
+  check('bulk delete removes staff', r.text.includes('1 staff deleted'));
+  check('deleted staff is gone from the list', !r.text.includes(`name="staff_ids" value="${movable[0]}"`));
+
+  /* ---------------- classes page & bulk ---------------- */
+  r = await req(a, 'GET', '/admin/classes');
+  check('classes page renders', r.status === 200 && r.text.includes('name="class_ids"'));
+  const classIds = [...r.text.matchAll(/name="class_ids" value="(\d+)"/g)].map((m) => Number(m[1]));
+  check('classes are listed', classIds.length > 2, `${classIds.length}`);
+  check('classes page shows booked counts', r.text.includes('Booked'));
+
+  r = await req(a, 'GET', `/admin/classes?campus=${salmiya}`);
+  const salmiyaClasses = [...r.text.matchAll(/name="class_ids" value="(\d+)"/g)].length;
+  r = await req(a, 'GET', '/admin/classes');
+  const allClasses = [...r.text.matchAll(/name="class_ids" value="(\d+)"/g)].length;
+  check('campus filter narrows the list', salmiyaClasses < allClasses, `${salmiyaClasses} of ${allClasses}`);
+
+  r = await req(a, 'GET', '/admin/classes?q=Arabic');
+  check('search filter works', [...r.text.matchAll(/name="class_ids" value="(\d+)"/g)].length < allClasses);
+
+  // Reassign a class to another teacher.
+  r = await req(a, 'GET', '/admin/classes');
+  const teacherOptions = pickValues(r.text, 'staff_id');
+  const moveTo = teacherOptions[0];
+  r = await req(a, 'POST', '/admin/classes/bulk', {
+    class_ids: [classIds[0]], action: 'reassign', staff_id: String(moveTo),
+  });
+  check('bulk reassign submits', r.status === 302);
+  r = await follow(a, '/admin/classes');
+  check('reassign is reported', /class\(es\) moved to /.test(r.text));
+
+  r = await req(a, 'POST', '/admin/classes/bulk', { class_ids: [classIds[0]], action: 'reassign' });
+  r = await follow(a, '/admin/classes');
+  check('reassign without a teacher is refused', r.text.includes('Choose the teacher'));
+
+  // Delete two classes that hold no bookings.
+  const doomed = [classIds[classIds.length - 1], classIds[classIds.length - 2]];
+  r = await req(a, 'POST', '/admin/classes/bulk', { class_ids: doomed, action: 'delete' });
+  check('bulk class delete submits', r.status === 302);
+  r = await follow(a, '/admin/classes');
+  check('class deletion is reported', /2 class\(es\) deleted/.test(r.text));
+  check('deleted classes are gone', !r.text.includes(`name="class_ids" value="${doomed[0]}"`));
 
   /* ---------------- deleting schedules ---------------- */
   r = await req(a, 'GET', '/admin/events/1');

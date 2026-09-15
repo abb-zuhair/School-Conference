@@ -237,6 +237,165 @@ router.post('/staff', (req, res) => {
   res.redirect('/admin/staff');
 });
 
+/* ----------------------- bulk staff actions ------------------------ */
+
+function liveBookingsForStaff(ids) {
+  if (!ids.length) return 0;
+  return db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM bookings b
+       JOIN schedules s ON s.id = b.schedule_id
+       WHERE b.status = 'booked' AND s.staff_id IN (${ids.map(() => '?').join(',')})`
+    )
+    .get(...ids).n;
+}
+
+router.post('/staff/bulk', (req, res) => {
+  const user = auth.currentUser(req);
+  const ids = (Array.isArray(req.body.staff_ids) ? req.body.staff_ids : [req.body.staff_ids])
+    .map(Number)
+    .filter(Boolean);
+  const action = String(req.body.action || '');
+  const back = '/admin/staff';
+
+  if (!ids.length) {
+    req.flash('error', 'Tick at least one staff member first.');
+    return res.redirect(back);
+  }
+
+  // campus_admins may only touch their own campus.
+  const scope = auth.campusScope(user);
+  const rows = db.prepare(`SELECT * FROM staff WHERE id IN (${ids.map(() => '?').join(',')})`).all(...ids);
+  if (scope !== null && rows.some((r) => Number(r.campus_id) !== Number(scope))) {
+    return res.status(403).send('Not allowed');
+  }
+
+  const placeholders = ids.map(() => '?').join(',');
+
+  if (action === 'campus') {
+    const campusId = Number(req.body.campus_id) || null;
+    if (campusId && !auth.canAccessCampus(user, campusId)) return res.status(403).send('Not allowed');
+    const tx = db.transaction(() => {
+      db.prepare(`UPDATE staff SET campus_id = ? WHERE id IN (${placeholders})`).run(campusId, ...ids);
+      // A department belongs to one campus — drop any that no longer fits.
+      db.prepare(
+        `UPDATE staff SET department_id = NULL
+         WHERE id IN (${placeholders})
+           AND department_id IS NOT NULL
+           AND department_id NOT IN (SELECT id FROM departments WHERE campus_id IS ?)`
+      ).run(...ids, campusId);
+    });
+    tx();
+    auth.audit(user.id, 'staff_bulk_campus', { ids, campusId });
+    req.flash('success', `${ids.length} staff moved. Departments that belonged to another campus were cleared — set them again below.`);
+    return res.redirect(back);
+  }
+
+  if (action === 'department') {
+    const deptId = Number(req.body.department_id) || null;
+    const dept = deptId ? db.prepare('SELECT * FROM departments WHERE id = ?').get(deptId) : null;
+    if (deptId && !dept) {
+      req.flash('error', 'That department no longer exists.');
+      return res.redirect(back);
+    }
+    if (dept && !auth.canAccessCampus(user, dept.campus_id)) return res.status(403).send('Not allowed');
+
+    const tx = db.transaction(() => {
+      db.prepare(`UPDATE staff SET department_id = ? WHERE id IN (${placeholders})`).run(deptId, ...ids);
+      // Keep campus and department consistent: the department's campus wins.
+      if (dept) db.prepare(`UPDATE staff SET campus_id = ? WHERE id IN (${placeholders})`).run(dept.campus_id, ...ids);
+    });
+    tx();
+    auth.audit(user.id, 'staff_bulk_department', { ids, deptId });
+    req.flash(
+      'success',
+      dept
+        ? `${ids.length} staff moved to ${dept.name}.`
+        : `Department cleared for ${ids.length} staff.`
+    );
+    return res.redirect(back);
+  }
+
+  if (action === 'activate' || action === 'deactivate') {
+    if (action === 'deactivate' && ids.includes(user.id)) {
+      req.flash('error', 'You cannot deactivate your own account — you would be signed out immediately. Untick yourself and try again.');
+      return res.redirect(back);
+    }
+    if (action === 'deactivate') {
+      const remaining = db
+        .prepare(`SELECT COUNT(*) AS n FROM staff WHERE role = 'admin' AND active = 1 AND id NOT IN (${placeholders})`)
+        .get(...ids).n;
+      if (remaining === 0) {
+        req.flash('error', 'That would deactivate every administrator. Keep at least one able to sign in.');
+        return res.redirect(back);
+      }
+    }
+    const active = action === 'activate' ? 1 : 0;
+    db.prepare(`UPDATE staff SET active = ? WHERE id IN (${placeholders})`).run(active, ...ids);
+    auth.audit(user.id, `staff_bulk_${action}`, { ids });
+    req.flash('success', `${ids.length} staff ${action === 'activate' ? 'activated' : 'deactivated'}.`);
+    return res.redirect(back);
+  }
+
+  if (action === 'delete') {
+    if (ids.includes(user.id)) {
+      req.flash('error', 'You cannot delete your own account. Untick yourself and try again.');
+      return res.redirect(back);
+    }
+    const remainingAdmins = db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM staff
+         WHERE role = 'admin' AND active = 1 AND id NOT IN (${placeholders})`
+      )
+      .get(...ids).n;
+    if (remainingAdmins === 0) {
+      req.flash('error', 'That would delete every administrator. Keep at least one.');
+      return res.redirect(back);
+    }
+
+    const booked = liveBookingsForStaff(ids);
+    if (booked > 0 && !asBool(req.body.cancel_bookings)) {
+      req.flash(
+        'error',
+        `Those staff hold ${booked} live booking(s). Tick “cancel their bookings too” to delete them — deactivating keeps the history instead.`
+      );
+      return res.redirect(back);
+    }
+
+    let cancelled = 0;
+    if (booked > 0) {
+      const bookingRows = db
+        .prepare(
+          `SELECT b.id FROM bookings b JOIN schedules s ON s.id = b.schedule_id
+           WHERE b.status = 'booked' AND s.staff_id IN (${placeholders})`
+        )
+        .all(...ids);
+      for (const row of bookingRows) {
+        sched.cancelBooking(row.id, 'admin');
+        if (asBool(req.body.notify)) {
+          const updated = sched.bookingById(row.id);
+          if (updated) notifyAsync(updated, 'cancellation');
+        }
+      }
+      cancelled = bookingRows.length;
+    }
+
+    const names = rows.map((r) => r.name);
+    db.prepare(`DELETE FROM staff WHERE id IN (${placeholders})`).run(...ids);
+    auth.audit(user.id, 'staff_bulk_delete', { ids, names, cancelled });
+    req.flash(
+      'success',
+      `${ids.length} staff deleted, along with their classes and schedules` +
+        (cancelled ? `, and ${cancelled} booking(s) cancelled` : '') +
+        '.'
+    );
+    return res.redirect(back);
+  }
+
+  req.flash('error', 'Pick an action.');
+  return res.redirect(back);
+});
+
 router.post('/staff/:id/reset-password', (req, res) => {
   const temp = token(6);
   db.prepare('UPDATE staff SET password_hash = ?, must_change_pw = 1 WHERE id = ?').run(auth.hashPassword(temp), Number(req.params.id));
@@ -353,6 +512,130 @@ router.post('/classes/:id/delete', (req, res) => {
   db.prepare('DELETE FROM classes WHERE id = ?').run(Number(req.params.id));
   req.flash('success', 'Class removed.');
   res.redirect(req.get('referer') || '/admin/staff');
+});
+
+/** Every class in one list, so a whole grade can be re-pointed or cleared out at once. */
+router.get('/classes', (req, res) => {
+  const f = campusFilter(req, 's.campus_id');
+  const campusId = Number(req.query.campus) || null;
+  const deptId = Number(req.query.department) || null;
+  const q = String(req.query.q || '').trim().toLowerCase();
+
+  let rows = db
+    .prepare(
+      `SELECT c.*, s.name AS staff_name, s.email AS staff_email, s.active AS staff_active,
+              cp.id AS campus_id, cp.name AS campus_name,
+              d.id AS department_id, d.name AS department_name,
+              (SELECT COUNT(*) FROM schedules sc WHERE sc.class_id = c.id) AS schedule_count,
+              (SELECT COUNT(*) FROM bookings b
+                 JOIN schedules sc2 ON sc2.id = b.schedule_id
+                WHERE sc2.class_id = c.id AND b.status = 'booked') AS booked
+       FROM classes c
+       JOIN staff s ON s.id = c.staff_id
+       LEFT JOIN campuses cp ON cp.id = s.campus_id
+       LEFT JOIN departments d ON d.id = s.department_id
+       WHERE ${f.sql}
+       ORDER BY cp.name, d.name, s.name, c.sort_order, c.name`
+    )
+    .all(...f.params);
+
+  if (campusId) rows = rows.filter((r) => r.campus_id === campusId);
+  if (deptId) rows = rows.filter((r) => r.department_id === deptId);
+  if (q) rows = rows.filter((r) => `${r.name} ${r.staff_name} ${r.grade_level || ''}`.toLowerCase().includes(q));
+
+  res.render('admin/classes', {
+    title: 'Classes',
+    classes: rows,
+    campuses: campusesFor(req),
+    departments: db.prepare('SELECT d.*, cp.name AS campus_name FROM departments d LEFT JOIN campuses cp ON cp.id = d.campus_id ORDER BY cp.name, d.name').all(),
+    teachers: db
+      .prepare(`SELECT s.id, s.name, s.email FROM staff s WHERE s.active = 1 AND ${f.sql} ORDER BY s.name`)
+      .all(...f.params),
+    filters: { campus: campusId, department: deptId, q: String(req.query.q || '') },
+  });
+});
+
+router.post('/classes/bulk', (req, res) => {
+  const user = auth.currentUser(req);
+  const ids = (Array.isArray(req.body.class_ids) ? req.body.class_ids : [req.body.class_ids])
+    .map(Number)
+    .filter(Boolean);
+  const action = String(req.body.action || '');
+  const back = req.get('referer') || '/admin/classes';
+
+  if (!ids.length) {
+    req.flash('error', 'Tick at least one class first.');
+    return res.redirect(back);
+  }
+
+  const placeholders = ids.map(() => '?').join(',');
+  const scope = auth.campusScope(user);
+  if (scope !== null) {
+    const outside = db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM classes c JOIN staff s ON s.id = c.staff_id
+         WHERE c.id IN (${placeholders}) AND (s.campus_id IS NULL OR s.campus_id != ?)`
+      )
+      .get(...ids, scope).n;
+    if (outside > 0) return res.status(403).send('Not allowed');
+  }
+
+  if (action === 'reassign') {
+    const staffId = Number(req.body.staff_id);
+    const target = staffId ? auth.findById(staffId) : null;
+    if (!target) {
+      req.flash('error', 'Choose the teacher to move these classes to.');
+      return res.redirect(back);
+    }
+    if (!auth.canAccessCampus(user, target.campus_id)) return res.status(403).send('Not allowed');
+    db.prepare(`UPDATE classes SET staff_id = ? WHERE id IN (${placeholders})`).run(target.id, ...ids);
+    auth.audit(user.id, 'classes_bulk_reassign', { ids, staffId: target.id });
+    req.flash('success', `${ids.length} class(es) moved to ${target.name}. Existing schedules follow the class, so published events stay intact.`);
+    return res.redirect(back);
+  }
+
+  if (action === 'delete') {
+    const booked = db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM bookings b JOIN schedules s ON s.id = b.schedule_id
+         WHERE b.status = 'booked' AND s.class_id IN (${placeholders})`
+      )
+      .get(...ids).n;
+
+    if (booked > 0 && !asBool(req.body.cancel_bookings)) {
+      req.flash('error', `Those classes hold ${booked} live booking(s). Tick “cancel their bookings too” to delete them.`);
+      return res.redirect(back);
+    }
+
+    let cancelled = 0;
+    if (booked > 0) {
+      const rows = db
+        .prepare(
+          `SELECT b.id FROM bookings b JOIN schedules s ON s.id = b.schedule_id
+           WHERE b.status = 'booked' AND s.class_id IN (${placeholders})`
+        )
+        .all(...ids);
+      for (const row of rows) {
+        sched.cancelBooking(row.id, 'admin');
+        if (asBool(req.body.notify)) {
+          const updated = sched.bookingById(row.id);
+          if (updated) notifyAsync(updated, 'cancellation');
+        }
+      }
+      cancelled = rows.length;
+    }
+
+    db.prepare(`DELETE FROM classes WHERE id IN (${placeholders})`).run(...ids);
+    auth.audit(user.id, 'classes_bulk_delete', { ids, cancelled });
+    req.flash(
+      'success',
+      `${ids.length} class(es) deleted` + (cancelled ? `, ${cancelled} booking(s) cancelled` : '') + '.'
+    );
+    return res.redirect(back);
+  }
+
+  req.flash('error', 'Pick an action.');
+  return res.redirect(back);
 });
 
 router.get('/staff/:id', (req, res) => {

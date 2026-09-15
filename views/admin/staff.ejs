@@ -11,12 +11,60 @@
     </form>
   </div>
 
+  <form method="post" action="/admin/staff/bulk" id="bulk-staff">
+  <div class="bulk-bar" id="staff-bulk-bar" hidden>
+    <strong class="small"><span id="staff-count">0</span> selected</strong>
+
+    <label class="small">Move to campus
+      <select name="campus_id" style="width:auto">
+        <option value="">— none —</option>
+        <% campuses.forEach(function (c) { %><option value="<%= c.id %>"><%= c.name %></option><% }); %>
+      </select>
+    </label>
+    <button class="btn sm" type="submit" name="action" value="campus">Apply</button>
+
+    <label class="small">Move to department
+      <select name="department_id" style="width:auto">
+        <option value="">— none —</option>
+        <% departments.forEach(function (d) { %><option value="<%= d.id %>"><%= d.name %></option><% }); %>
+      </select>
+    </label>
+    <button class="btn sm" type="submit" name="action" value="department">Apply</button>
+
+    <span class="bulk-sep"></span>
+    <button class="btn sm ghost" type="submit" name="action" value="activate">Activate</button>
+    <button class="btn sm ghost" type="submit" name="action" value="deactivate">Deactivate</button>
+
+    <details class="bulk-danger">
+      <summary class="btn sm danger">Delete…</summary>
+      <div class="bulk-danger-body">
+        <p class="small muted" style="margin:0 0 8px">
+          Deletes the staff records, their classes and schedules. <strong>Deactivate instead</strong> if you only want to stop them signing in — that keeps past bookings intact.
+        </p>
+        <div class="check">
+          <input type="checkbox" id="bulk_cancel" name="cancel_bookings" value="1">
+          <label for="bulk_cancel">Cancel their live bookings too</label>
+        </div>
+        <div class="check">
+          <input type="checkbox" id="bulk_notify" name="notify" value="1" checked>
+          <label for="bulk_notify">Tell the affected parents</label>
+        </div>
+        <button class="btn sm danger" type="submit" name="action" value="delete"
+                onclick="return confirm('Delete the selected staff permanently?')">Delete selected staff</button>
+      </div>
+    </details>
+  </div>
+
   <div class="table-wrap">
     <table class="data">
-      <thead><tr><th>Name</th><th>Email</th><th>Campus</th><th>Department</th><th>Role</th><th>Classes</th><th></th></tr></thead>
+      <thead><tr>
+        <th style="width:34px"><input type="checkbox" id="staff-all" aria-label="Select all"></th>
+        <th>Name</th><th>Email</th><th>Campus</th><th>Department</th><th>Role</th><th>Classes</th><th></th>
+      </tr></thead>
       <tbody>
         <% staff.forEach(function (s) { %>
           <tr style="<%= s.active ? '' : 'opacity:.5' %>">
+            <td><input type="checkbox" class="staff-pick" name="staff_ids" value="<%= s.id %>" form="bulk-staff"></td>
             <td><a href="/admin/staff/<%= s.id %>"><strong><%= s.name %></strong></a><% if (s.title) { %><br><span class="muted small"><%= s.title %></span><% } %></td>
             <td class="small mono"><%= s.email %></td>
             <td class="small"><%= s.campus_name || '—' %></td>
@@ -36,7 +84,30 @@
       </tbody>
     </table>
   </div>
+  </form>
 </div>
+
+<script>
+  (function () {
+    var all = document.getElementById('staff-all');
+    var picks = Array.prototype.slice.call(document.querySelectorAll('.staff-pick'));
+    var bar = document.getElementById('staff-bulk-bar');
+    var count = document.getElementById('staff-count');
+    function sync() {
+      var n = picks.filter(function (p) { return p.checked; }).length;
+      count.textContent = n;
+      bar.hidden = n === 0;
+      if (all) all.checked = n > 0 && n === picks.length;
+      if (all) all.indeterminate = n > 0 && n < picks.length;
+    }
+    if (all) all.addEventListener('change', function () {
+      picks.forEach(function (p) { p.checked = all.checked; });
+      sync();
+    });
+    picks.forEach(function (p) { p.addEventListener('change', sync); });
+    sync();
+  })();
+</script>
 
 <form method="post" action="/admin/staff" class="card">
   <h2>Add or update a staff member</h2>
