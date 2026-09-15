@@ -577,9 +577,23 @@ router.post('/schedules/:id/delete', (req, res) => {
 
 /** Roll the same slot pattern across many schedules at once. */
 router.post('/events/:id/slots/bulk', loadEvent, (req, res) => {
-  const ids = (Array.isArray(req.body.schedule_ids) ? req.body.schedule_ids : [req.body.schedule_ids])
-    .map(Number)
-    .filter(Boolean);
+  const asList = (v) => (Array.isArray(v) ? v : [v]).map(Number).filter(Boolean);
+
+  // Ticking a department means "every schedule in it" — expanded here rather than
+  // in the browser, so it still works with JavaScript off and picks up any schedule
+  // added since the page was loaded.
+  const deptIds = asList(req.body.slot_department_ids);
+  const fromDepartments = deptIds.length
+    ? db
+        .prepare(
+          `SELECT id FROM schedules
+           WHERE event_id = ? AND department_id IN (${deptIds.map(() => '?').join(',')})`
+        )
+        .all(req.event.id, ...deptIds)
+        .map((r) => r.id)
+    : [];
+
+  const ids = [...new Set([...asList(req.body.schedule_ids), ...fromDepartments])];
   const dates = String(req.body.dates || '')
     .split(/[\s,]+/)
     .map((d) => d.trim())
@@ -589,7 +603,13 @@ router.post('/events/:id/slots/bulk', loadEvent, (req, res) => {
     breaks.push({ start: req.body.break_start, end: req.body.break_end, label: req.body.break_label || 'Break' });
   }
   try {
-    if (!ids.length) throw new Error('Select at least one schedule.');
+    if (!ids.length) {
+      throw new Error(
+        deptIds.length
+          ? 'Those departments have no schedules yet — create schedules from classes first.'
+          : 'Select at least one department or schedule.'
+      );
+    }
     const rows = sched.buildSlots({
       dates,
       startTime: req.body.start_time,
@@ -601,8 +621,14 @@ router.post('/events/:id/slots/bulk', loadEvent, (req, res) => {
     });
     let added = 0;
     for (const id of ids) added += sched.insertSlots(id, rows);
-    auth.audit(auth.currentUser(req).id, 'slots_bulk', { eventId: req.event.id, schedules: ids.length, added });
-    req.flash('success', `${added} slot(s) added across ${ids.length} schedule(s).`);
+    auth.audit(auth.currentUser(req).id, 'slots_bulk', {
+      eventId: req.event.id,
+      departments: deptIds.length,
+      schedules: ids.length,
+      added,
+    });
+    const via = deptIds.length ? ` (${deptIds.length} department${deptIds.length === 1 ? '' : 's'})` : '';
+    req.flash('success', `${added} slot(s) added across ${ids.length} schedule(s)${via}.`);
   } catch (err) {
     req.flash('error', err.message);
   }

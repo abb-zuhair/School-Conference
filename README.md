@@ -39,6 +39,16 @@ It covers the booking rules (overlap, per-student cap, one-teacher-once, double-
 locked schedules), cancellation and slot release, counter capacity, the teacher portal,
 the admin exports, and access control.
 
+```bash
+npm run features   # CSV upload, compare toggle, department slot generation, back-ups
+npm run sso        # Entra sign-in against a mock login host — starts its own instance
+```
+
+`npm run sso` needs no Microsoft credentials: it runs a fake authority on port 3101 and
+walks the real redirect flow, including the rejections that matter — unknown account,
+deactivated account, foreign tenant, wrong audience, expired token, replayed nonce and
+forged `state`.
+
 ---
 
 ## What it does
@@ -67,7 +77,7 @@ the admin exports, and access control.
 
 ### Teachers
 
-- Sign in, see every schedule they own and their next appointments.
+- Sign in with their school Microsoft 365 account (or a password — see [Staff sign-in](#staff-sign-in-with-microsoft-365-entra-id-sso)), see every schedule they own and their next appointments.
 - Generate slots: dates, start/end, minutes each, gap, capacity, and an optional break (prayer time, for instance) that is punched out automatically.
 - Set mode (in person / phone / video), room, Teams or Zoom link, and a note that rides along in the confirmation email.
 - **Lock the schedule** — freezes new sign-ups without touching existing bookings.
@@ -81,7 +91,7 @@ the admin exports, and access control.
 - **Download the database** as a single file from the admin dashboard — a consistent copy, safe to take while parents are booking.
 - Events of four types — conference, uniform, registration, other — each with its own instructions, open/close window and rules.
 - **Create schedules from classes**: tick departments, get one slot sheet per class in one click.
-- **Bulk slot generation** across any number of schedules at once — safe to re-run after adding a teacher, duplicates are skipped.
+- **Bulk slot generation** — tick whole **departments** and every teacher in them gets the same pattern, or open a department and pick individual schedules. Safe to re-run after adding a teacher: duplicate times are skipped, and a department tick picks up schedules created since.
 - Reports: fill rate per teacher, all bookings, bookings CSV, open-slots CSV, resend a confirmation.
 - Message log showing every email and WhatsApp attempt with its result.
 
@@ -90,6 +100,49 @@ the admin exports, and access control.
 ## Configuration
 
 Everything lives in `.env` — see `.env.example` for the full annotated list.
+
+### Staff sign-in with Microsoft 365 (Entra ID SSO)
+
+Teachers click **Sign in with Microsoft** and never get a password. Parents are unaffected — they still book without any account.
+
+**Create the app registration**
+
+1. Entra admin centre → **App registrations** → **New registration**.
+   - Name: *ACA Appointments*
+   - Supported account types: **Accounts in this organizational directory only**
+   - Redirect URI: platform **Web**, value `https://appointments.aca.edu.kw/auth/microsoft/callback`
+2. **Certificates & secrets** → **New client secret**. Copy the *Value* immediately — it is shown once. Note the expiry and put a reminder in your calendar; an expired secret breaks sign-in for everyone.
+3. **API permissions** → the default `User.Read` (Delegated) is enough. `openid`, `profile` and `email` are included automatically. No admin consent needed for these.
+4. **Overview** → copy the *Application (client) ID* and *Directory (tenant) ID*.
+
+**Set the variables**
+
+```
+ENTRA_TENANT_ID=<Directory (tenant) ID>
+ENTRA_CLIENT_ID=<Application (client) ID>
+ENTRA_CLIENT_SECRET=<the secret Value>
+```
+
+Redeploy. The boot log confirms it:
+
+```
+sso : Microsoft Entra enabled (https://appointments.aca.edu.kw/auth/microsoft/callback)
+```
+
+**How accounts are matched.** The signed-in Microsoft identity is matched to an existing staff row — first by Entra object id, then by email. **Someone with no staff record is refused**, with a message telling them to contact the IT office. So the CSV import is still how people get in; SSO only replaces the password. Set `ENTRA_AUTO_CREATE=true` to create a teacher account on first sign-in instead, if you would rather let the whole tenant in.
+
+Once someone has signed in, their Entra object id is stored, so changing their email in Microsoft 365 does not orphan the account.
+
+**Password sign-in stays available** below the Microsoft button. Keep it: the uniform counter and front-desk accounts may have no mailbox, and it is your way back in if the client secret expires. Accounts that only ever use Microsoft never get a password and are never prompted for one.
+
+**Things that commonly go wrong**
+
+| Symptom | Cause |
+|---|---|
+| `AADSTS50011: redirect URI mismatch` | The URI in Entra must match `BASE_URL` + `/auth/microsoft/callback` exactly — scheme, host, no trailing slash. Add the Railway URL too if you test on it. |
+| "not registered in the appointment system" | Working as intended — add the staff record first. |
+| Sign-in worked, then stopped months later | The client secret expired. Create a new one and update `ENTRA_CLIENT_SECRET`. |
+| `AADSTS700016: application not found in the directory` | `ENTRA_TENANT_ID` or `ENTRA_CLIENT_ID` is wrong, or the app was registered in a different tenant. |
 
 ### Email — Microsoft Graph (app-only)
 

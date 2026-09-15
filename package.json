@@ -15,7 +15,9 @@
     "reset": "node src/db/reset.js",
     "smoke": "node test/smoke.js",
     "set-password": "node src/db/set-password.js",
-    "features": "node test/features.js"
+    "features": "node test/features.js",
+    "sso": "node test/sso.js",
+    "test": "npm run smoke && npm run features"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

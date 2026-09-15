@@ -32,6 +32,23 @@ const config = {
     },
   },
 
+  entra: {
+    tenantId: process.env.ENTRA_TENANT_ID || process.env.GRAPH_TENANT_ID || '',
+    clientId: process.env.ENTRA_CLIENT_ID || '',
+    clientSecret: process.env.ENTRA_CLIENT_SECRET || '',
+    redirectUri: process.env.ENTRA_REDIRECT_URI || '',
+    // Sovereign clouds use a different login host (and the test suite points this
+    // at a local mock). Leave unset for normal Microsoft 365.
+    authorityHost: (process.env.ENTRA_AUTHORITY || 'https://login.microsoftonline.com').replace(/\/+$/, ''),
+    // Deny anyone without a staff record. Flip on only if you want every
+    // account in the tenant to get a teacher login automatically.
+    autoCreate: bool(process.env.ENTRA_AUTO_CREATE, false),
+    autoCreateRole: process.env.ENTRA_AUTO_CREATE_ROLE || 'teacher',
+    get enabled() {
+      return Boolean(this.tenantId && this.clientId && this.clientSecret);
+    },
+  },
+
   wati: {
     endpoint: (process.env.WATI_API_ENDPOINT || '').replace(/\/+$/, ''),
     token: process.env.WATI_ACCESS_TOKEN || '',

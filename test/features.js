@@ -155,6 +155,71 @@ async function follow(j, path) {
   r = await req(p, 'GET', '/e/ptc-term1-hawally/compare?ids=1,2');
   check('compare works again once re-enabled', r.status === 200 && r.text.includes('Compare schedules'));
 
+  /* ---------------- slots by department ---------------- */
+  r = await req(a, 'GET', '/admin/events/1');
+  check('slot picker groups by department', r.text.includes('name="slot_department_ids"'));
+  check('department groups show teacher counts', /teacher\(s\)/.test(r.text));
+
+  // Find a department that has schedules on this event, and count its slots before.
+  const deptOpt = [...r.text.matchAll(/name="slot_department_ids" value="(\d+)"/g)].map((m) => Number(m[1]));
+  check('a department is tickable', deptOpt.length > 0, `found ${deptOpt.length}`);
+
+  const targetDept = deptOpt[0];
+  const before = await req(a, 'GET', `/admin/events/1/unbooked.csv`);
+  const beforeRows = before.text.split('\n').length;
+
+  // One new date, applied to a whole department rather than individual schedules.
+  const newDate = new Date(Date.now() + 40 * 864e5).toISOString().slice(0, 10);
+  r = await req(a, 'POST', '/admin/events/1/slots/bulk', {
+    slot_department_ids: String(targetDept),
+    dates: newDate,
+    start_time: '16:00',
+    end_time: '17:00',
+    duration: '15',
+    gap: '0',
+    capacity: '1',
+  });
+  check('department generation submits', r.status === 302);
+
+  r = await follow(a, '/admin/events/1');
+  check('department generation reports departments', /\d+ slot\(s\) added across \d+ schedule\(s\) \(1 department\)/.test(r.text), 'flash message');
+
+  const after = await req(a, 'GET', '/admin/events/1/unbooked.csv');
+  check('slots were actually created', after.text.split('\n').length > beforeRows);
+  check('new slots landed on the new date', after.text.includes(newDate.slice(0, 4)) && after.text.split('\n').some((l) => l.includes('4:00 PM')));
+
+  // Every schedule in that department should now carry the new date — that's the point.
+  r = await req(a, 'GET', '/admin/events/1');
+  const deptScheduleIds = [...r.text.matchAll(/name="schedule_ids" value="(\d+)" data-in-dept="(\d+)"/g)]
+    .filter((m) => Number(m[2]) === targetDept)
+    .map((m) => Number(m[1]));
+  check('department has more than one schedule', deptScheduleIds.length > 1, `${deptScheduleIds.length}`);
+
+  let everyone = true;
+  for (const sid of deptScheduleIds) {
+    // eslint-disable-next-line no-await-in-loop
+    const sr = await req(a, 'GET', `/staff/schedule/${sid}`);
+    if (!sr.text.includes('4:00 PM')) everyone = false;
+  }
+  check('every teacher in the department got the slots', everyone);
+
+  // A department with no schedules is reported, not silently ignored.
+  r = await req(a, 'POST', '/admin/events/1/slots/bulk', {
+    slot_department_ids: '99999',
+    dates: newDate,
+    start_time: '16:00',
+    end_time: '17:00',
+    duration: '15',
+  });
+  r = await follow(a, '/admin/events/1');
+  check('empty department is reported', r.text.includes('no schedules yet'));
+
+  r = await req(a, 'POST', '/admin/events/1/slots/bulk', {
+    dates: newDate, start_time: '16:00', end_time: '17:00', duration: '15',
+  });
+  r = await follow(a, '/admin/events/1');
+  check('no selection is reported', r.text.includes('Select at least one department or schedule'));
+
   /* ---------------- backup download ---------------- */
   r = await req(a, 'GET', '/admin/backup.db');
   check('backup downloads', r.status === 200, `status ${r.status}`);

@@ -27,6 +27,8 @@ function migrate() {
 
   // Incremental changes to databases created by an earlier version.
   addColumn('events', 'allow_compare', 'INTEGER NOT NULL DEFAULT 1');
+  addColumn('staff', 'entra_oid', 'TEXT');
+  addColumn('staff', 'last_login_method', 'TEXT');
 }
 
 /**

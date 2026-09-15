@@ -44,6 +44,8 @@ CREATE TABLE IF NOT EXISTS staff (
   password_hash  TEXT,
   must_change_pw INTEGER NOT NULL DEFAULT 0,
   active         INTEGER NOT NULL DEFAULT 1,
+  entra_oid      TEXT,            -- Microsoft Entra object id, set on first SSO sign-in
+  last_login_method TEXT,         -- password | microsoft
   last_login_at  TEXT,
   created_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );

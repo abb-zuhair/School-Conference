@@ -72,6 +72,7 @@ app.use((req, res, next) => {
 
 app.get('/healthz', (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
 
+app.use('/auth', require('./routes/auth'));
 app.use('/', require('./routes/public'));
 app.use('/staff', require('./routes/staff'));
 app.use('/admin', require('./routes/admin'));
@@ -95,6 +96,7 @@ const server = app.listen(config.port, () => {
   console.log(`  base URL : ${config.baseUrl}`);
   console.log(`  email    : ${config.graph.enabled ? 'Microsoft Graph enabled' : 'disabled (set GRAPH_* in .env)'}`);
   console.log(`  whatsapp : ${config.wati.enabled ? 'WATI enabled' : 'disabled (set WATI_* in .env)'}`);
+  console.log(`  sso      : ${config.entra.enabled ? `Microsoft Entra enabled (${require('./services/entra-sso').redirectUri()})` : 'disabled (set ENTRA_* in .env)'}`);
   console.log(`  database : ${dbPath}`);
   if (isEphemeralStorage()) {
     console.warn(

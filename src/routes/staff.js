@@ -1,6 +1,7 @@
 'use strict';
 const express = require('express');
 const { db } = require('../db');
+const config = require('../config');
 const auth = require('../lib/auth');
 const sched = require('../lib/scheduling');
 const { notifyAsync } = require('../services/notify');
@@ -12,7 +13,12 @@ const router = express.Router();
 
 router.get('/login', (req, res) => {
   if (auth.currentUser(req)) return res.redirect('/staff');
-  return res.render('staff/login', { title: 'Staff sign in', email: '', error: null });
+  return res.render('staff/login', {
+    title: 'Staff sign in',
+    email: '',
+    error: null,
+    ssoEnabled: config.entra.enabled,
+  });
 });
 
 router.post('/login', (req, res) => {
@@ -20,9 +26,14 @@ router.post('/login', (req, res) => {
   const password = String(req.body.password || '');
   const user = auth.findByEmail(email);
   if (!user || !user.active || !auth.verifyPassword(password, user.password_hash)) {
-    return res.status(401).render('staff/login', { title: 'Staff sign in', email, error: 'Wrong email or password.' });
+    return res.status(401).render('staff/login', {
+      title: 'Staff sign in',
+      email,
+      error: 'Wrong email or password.',
+      ssoEnabled: config.entra.enabled,
+    });
   }
-  db.prepare("UPDATE staff SET last_login_at = datetime('now') WHERE id = ?").run(user.id);
+  db.prepare("UPDATE staff SET last_login_at = datetime('now'), last_login_method = 'password' WHERE id = ?").run(user.id);
   req.session.staffId = user.id;
   auth.audit(user.id, 'login', { email: user.email });
   const dest = req.session.returnTo || (auth.ADMIN_ROLES.includes(user.role) ? '/admin' : '/staff');
@@ -45,7 +56,9 @@ router.post('/password', (req, res) => {
   const user = auth.currentUser(req);
   const { current_password: current, new_password: next, confirm_password: confirm } = req.body;
   const render = (error) => res.status(400).render('staff/password', { title: 'Change password', error });
-  if (!user.must_change_pw && !auth.verifyPassword(current, user.password_hash)) return render('Your current password is not correct.');
+  // An account that signs in with Microsoft has no password to confirm.
+  const needsCurrent = !user.must_change_pw && Boolean(user.password_hash);
+  if (needsCurrent && !auth.verifyPassword(current, user.password_hash)) return render('Your current password is not correct.');
   if (!next || String(next).length < 8) return render('Choose a password of at least 8 characters.');
   if (next !== confirm) return render('The two new passwords do not match.');
   db.prepare('UPDATE staff SET password_hash = ?, must_change_pw = 0 WHERE id = ?').run(auth.hashPassword(next), user.id);

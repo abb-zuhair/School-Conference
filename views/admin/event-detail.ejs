@@ -119,21 +119,88 @@
   </fieldset>
 
   <h3>Apply to</h3>
+  <p class="muted small">
+    Tick a <strong>department</strong> to cover every teacher in it — including any teacher added later.
+    Or open a department and pick individual schedules.
+  </p>
   <div class="btn-row" style="margin-bottom:10px">
-    <button class="btn sm ghost" type="button" onclick="document.querySelectorAll('input[name=schedule_ids]').forEach(function(c){c.checked=true})">Select all</button>
-    <button class="btn sm ghost" type="button" onclick="document.querySelectorAll('input[name=schedule_ids]').forEach(function(c){c.checked=false})">Clear</button>
+    <button class="btn sm ghost" type="button" data-select="all">Select all departments</button>
+    <button class="btn sm ghost" type="button" data-select="none">Clear</button>
   </div>
-  <div class="grid three" style="max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:12px">
-    <% schedules.forEach(function (s) { %>
-      <label class="check">
-        <input type="checkbox" name="schedule_ids" value="<%= s.id %>">
-        <span><%= s.display_name %><br><span class="muted small"><%= s.staff_name || '' %> · <%= s.stats.total_slots %> slots</span></span>
-      </label>
+
+  <%
+    // Group the event's schedules by department for the picker below.
+    var groups = [];
+    schedules.forEach(function (s) {
+      var key = s.department_id || 0;
+      var g = groups.find(function (x) { return x.key === key; });
+      if (!g) {
+        g = { key: key, name: s.department_name || 'No department', id: s.department_id, items: [] };
+        groups.push(g);
+      }
+      g.items.push(s);
+    });
+  %>
+
+  <div class="dept-picker">
+    <% groups.forEach(function (g) { %>
+      <div class="dept-group">
+        <label class="check dept-head">
+          <input type="checkbox" name="slot_department_ids" value="<%= g.id || '' %>"
+                 data-dept="<%= g.key %>" <%= g.id ? '' : 'disabled title="Schedules with no department must be picked individually"' %>>
+          <span>
+            <strong><%= g.name %></strong>
+            <span class="muted small">— <%= g.items.length %> schedule<%= g.items.length === 1 ? '' : 's' %>,
+              <%= [...new Set(g.items.map(function (i) { return i.staff_id; }).filter(Boolean))].length %> teacher(s)</span>
+          </span>
+        </label>
+        <details>
+          <summary class="muted small">Show schedules</summary>
+          <div class="grid three" style="padding:10px 0 4px">
+            <% g.items.forEach(function (s) { %>
+              <label class="check">
+                <input type="checkbox" name="schedule_ids" value="<%= s.id %>" data-in-dept="<%= g.key %>">
+                <span><%= s.display_name %><br><span class="muted small"><%= s.staff_name || '' %> · <%= s.stats.total_slots %> slots</span></span>
+              </label>
+            <% }); %>
+          </div>
+        </details>
+      </div>
     <% }); %>
   </div>
+
   <% if (!schedules.length) { %><p class="muted small">Create schedules first.</p><% } %>
   <div class="btn-row" style="margin-top:14px"><button class="btn" type="submit">Generate slots</button></div>
 </form>
+
+<script>
+  (function () {
+    var depts = document.querySelectorAll('input[name=slot_department_ids]');
+    function childrenOf(key) {
+      return document.querySelectorAll('input[name=schedule_ids][data-in-dept="' + key + '"]');
+    }
+    depts.forEach(function (d) {
+      d.addEventListener('change', function () {
+        childrenOf(d.dataset.dept).forEach(function (c) { c.checked = d.checked; });
+      });
+    });
+    // Unticking one teacher releases the whole-department tick, so exclusions stick.
+    document.querySelectorAll('input[name=schedule_ids]').forEach(function (c) {
+      c.addEventListener('change', function () {
+        if (c.checked) return;
+        var d = document.querySelector('input[name=slot_department_ids][data-dept="' + c.dataset.inDept + '"]');
+        if (d) d.checked = false;
+      });
+    });
+    document.querySelectorAll('[data-select]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var on = b.dataset.select === 'all';
+        depts.forEach(function (d) { if (!d.disabled) { d.checked = on; childrenOf(d.dataset.dept).forEach(function (c) { c.checked = on; }); } });
+        if (!on) document.querySelectorAll('input[name=schedule_ids]').forEach(function (c) { c.checked = false; });
+      });
+    });
+  })();
+</script>
 
 <div class="card">
   <h2>Schedules (<%= schedules.length %>)</h2>

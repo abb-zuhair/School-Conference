@@ -133,6 +133,27 @@ small, .small { font-size: .82rem; }
 .btn[disabled], .btn.disabled { opacity: .45; pointer-events: none; }
 .btn-row { display: flex; gap: 9px; flex-wrap: wrap; align-items: center; }
 
+/* ---------------- microsoft sign-in ---------------- */
+
+.ms-btn {
+  width: 100%;
+  background: #fff;
+  color: #1b1b1b;
+  border: 1px solid #8c8c8c;
+  border-radius: 9px;
+  font-weight: 600;
+  gap: 10px;
+}
+.ms-btn:hover { background: #f3f3f3; border-color: #5e5e5e; }
+
+.or-rule {
+  display: flex; align-items: center; gap: 12px;
+  margin: 20px 0 16px; color: var(--muted); font-size: .8rem;
+}
+.or-rule::before, .or-rule::after {
+  content: ""; flex: 1; height: 1px; background: var(--line);
+}
+
 /* ---------------- forms ---------------- */
 
 label { display: block; font-size: .85rem; font-weight: 600; color: #2f4354; margin-bottom: 5px; }
@@ -151,6 +172,22 @@ textarea { min-height: 92px; resize: vertical; }
 .check label { font-weight: 400; margin: 0; }
 fieldset { border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin: 0 0 16px; }
 legend { font-weight: 600; font-size: .88rem; padding: 0 6px; }
+
+/* ---------------- department picker ---------------- */
+
+.dept-picker {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  max-height: 340px;
+  overflow: auto;
+  background: #fff;
+}
+.dept-group { border-bottom: 1px solid var(--line); padding: 10px 14px; }
+.dept-group:last-child { border-bottom: 0; }
+.dept-head { margin-bottom: 4px; }
+.dept-head input { width: auto; }
+.dept-group summary { cursor: pointer; padding-inline-start: 26px; }
+.dept-group details[open] summary { margin-bottom: 4px; }
 
 /* ---------------- tables ---------------- */
 
