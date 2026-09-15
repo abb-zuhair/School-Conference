@@ -6,5 +6,8 @@
     <a class="btn sm <%= path === '/admin/staff' ? '' : 'ghost' %>" href="/admin/staff">Staff &amp; classes</a>
     <a class="btn sm <%= path === '/admin/staff/import' ? '' : 'ghost' %>" href="/admin/staff/import">Import CSV</a>
     <a class="btn sm <%= path === '/admin/notifications' ? '' : 'ghost' %>" href="/admin/notifications">Message log</a>
+    <% if (user && user.role === 'admin') { %>
+      <a class="btn sm <%= path === '/admin/sso-check' ? '' : 'ghost' %>" href="/admin/sso-check">Sign-in check</a>
+    <% } %>
   </div>
 </div>

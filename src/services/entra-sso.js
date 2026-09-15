@@ -99,4 +99,53 @@ function verifyIdToken(idToken, expectedNonce) {
   };
 }
 
-module.exports = { buildAuthUrl, exchangeCode, verifyIdToken, redirectUri, authority };
+const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Sanity-check the configuration without contacting Microsoft.
+ * Catches the mistakes that produce an opaque AADSTS error at the login page.
+ */
+function diagnose() {
+  const problems = [];
+  const { tenantId, clientId, clientSecret } = config.entra;
+
+  if (!tenantId) problems.push('ENTRA_TENANT_ID is empty.');
+  else if (!GUID.test(tenantId)) {
+    problems.push(
+      `ENTRA_TENANT_ID is not a GUID ("${tenantId}"). Copy "Directory (tenant) ID" from the app registration Overview — with no < > brackets or quotes.`
+    );
+  }
+
+  if (!clientId) problems.push('ENTRA_CLIENT_ID is empty.');
+  else if (!GUID.test(clientId)) {
+    problems.push(
+      `ENTRA_CLIENT_ID is not a GUID ("${clientId}"). Copy "Application (client) ID" from the Overview page — with no < > brackets or quotes.`
+    );
+  }
+
+  if (!clientSecret) problems.push('ENTRA_CLIENT_SECRET is empty.');
+  else if (GUID.test(clientSecret)) {
+    problems.push(
+      'ENTRA_CLIENT_SECRET looks like a GUID, which means the Secret ID was copied instead of the secret. Use the "Value" column in Certificates & secrets.'
+    );
+  }
+
+  const uri = redirectUri();
+  if (!/^https?:\/\//i.test(uri)) problems.push(`Redirect URI is malformed ("${uri}") — check BASE_URL.`);
+  else if (!uri.startsWith('https://') && !/localhost|127\.0\.0\.1/.test(uri)) {
+    problems.push(`Redirect URI is not HTTPS ("${uri}"). Entra rejects plain HTTP for anything but localhost.`);
+  }
+
+  return {
+    ok: problems.length === 0,
+    problems,
+    redirectUri: uri,
+    tenantId,
+    clientId,
+    secretSet: Boolean(clientSecret),
+    secretLength: clientSecret.length,
+    authorityHost: config.entra.authorityHost,
+  };
+}
+
+module.exports = { buildAuthUrl, exchangeCode, verifyIdToken, redirectUri, authority, diagnose };

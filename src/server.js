@@ -96,7 +96,17 @@ const server = app.listen(config.port, () => {
   console.log(`  base URL : ${config.baseUrl}`);
   console.log(`  email    : ${config.graph.enabled ? 'Microsoft Graph enabled' : 'disabled (set GRAPH_* in .env)'}`);
   console.log(`  whatsapp : ${config.wati.enabled ? 'WATI enabled' : 'disabled (set WATI_* in .env)'}`);
-  console.log(`  sso      : ${config.entra.enabled ? `Microsoft Entra enabled (${require('./services/entra-sso').redirectUri()})` : 'disabled (set ENTRA_* in .env)'}`);
+  if (config.entra.enabled) {
+    const check = require('./services/entra-sso').diagnose();
+    console.log(`  sso      : Microsoft Entra enabled (${check.redirectUri})`);
+    if (!check.ok) {
+      console.warn('\n  ⚠  Microsoft sign-in is misconfigured — it will fail at the Microsoft login page:');
+      for (const p of check.problems) console.warn(`     • ${p}`);
+      console.warn('     Details at /admin/sso-check once you are signed in as an admin.\n');
+    }
+  } else {
+    console.log('  sso      : disabled (set ENTRA_* in .env)');
+  }
   console.log(`  database : ${dbPath}`);
   if (isEphemeralStorage()) {
     console.warn(

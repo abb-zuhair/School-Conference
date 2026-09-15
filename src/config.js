@@ -2,13 +2,25 @@
 require('dotenv').config();
 const path = require('path');
 
+/**
+ * Environment values arrive from dashboards where it is easy to paste a
+ * placeholder verbatim. Strip surrounding whitespace, angle brackets and
+ * quotes so `<my-tenant-id>` and `"secret"` behave like the bare value.
+ */
+const clean = (v) =>
+  String(v == null ? '' : v)
+    .trim()
+    .replace(/^<+|>+$/g, '')
+    .replace(/^["']|["']$/g, '')
+    .trim();
+
 const bool = (v, d = false) => (v === undefined || v === '' ? d : /^(1|true|yes|on)$/i.test(String(v)));
 const int = (v, d) => (v === undefined || v === '' || Number.isNaN(Number(v)) ? d : parseInt(v, 10));
 
 const config = {
   env: process.env.NODE_ENV || 'development',
   port: int(process.env.PORT, 3000),
-  baseUrl: (process.env.BASE_URL || `http://localhost:${int(process.env.PORT, 3000)}`).replace(/\/+$/, ''),
+  baseUrl: (clean(process.env.BASE_URL) || `http://localhost:${int(process.env.PORT, 3000)}`).replace(/\/+$/, ''),
   sessionSecret: process.env.SESSION_SECRET || 'insecure-dev-secret-change-me',
   databasePath: process.env.DATABASE_PATH || path.join(process.cwd(), 'data', 'app.db'),
   timezone: process.env.SCHOOL_TIMEZONE || 'Asia/Kuwait',
@@ -33,10 +45,10 @@ const config = {
   },
 
   entra: {
-    tenantId: process.env.ENTRA_TENANT_ID || process.env.GRAPH_TENANT_ID || '',
-    clientId: process.env.ENTRA_CLIENT_ID || '',
-    clientSecret: process.env.ENTRA_CLIENT_SECRET || '',
-    redirectUri: process.env.ENTRA_REDIRECT_URI || '',
+    tenantId: clean(process.env.ENTRA_TENANT_ID) || clean(process.env.GRAPH_TENANT_ID),
+    clientId: clean(process.env.ENTRA_CLIENT_ID),
+    clientSecret: clean(process.env.ENTRA_CLIENT_SECRET),
+    redirectUri: clean(process.env.ENTRA_REDIRECT_URI),
     // Sovereign clouds use a different login host (and the test suite points this
     // at a local mock). Leave unset for normal Microsoft 365.
     authorityHost: (process.env.ENTRA_AUTHORITY || 'https://login.microsoftonline.com').replace(/\/+$/, ''),

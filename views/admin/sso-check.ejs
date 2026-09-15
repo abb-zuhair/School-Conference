@@ -1,0 +1,88 @@
+<%- include('../partials/head') %>
+<%- include('../partials/admin-nav') %>
+
+<div class="card">
+  <h1>Microsoft sign-in check</h1>
+  <p class="muted small">
+    What this app will send to Microsoft. Compare each value with the app registration in
+    Entra — most <span class="mono">AADSTS</span> errors are a mismatch between these two screens.
+  </p>
+
+  <% if (!enabled) { %>
+    <div class="alert info">
+      Microsoft sign-in is turned off. Set <span class="mono">ENTRA_TENANT_ID</span>,
+      <span class="mono">ENTRA_CLIENT_ID</span> and <span class="mono">ENTRA_CLIENT_SECRET</span>, then redeploy.
+      Staff sign in with passwords in the meantime.
+    </div>
+  <% } else if (check.ok) { %>
+    <div class="alert success">Configuration looks right. If sign-in still fails, the mismatch is on the Entra side — check the table below against the app registration.</div>
+  <% } else { %>
+    <div class="alert error">
+      <strong>These will stop sign-in from working:</strong>
+      <ul><% check.problems.forEach(function (p) { %><li><%= p %></li><% }); %></ul>
+    </div>
+  <% } %>
+</div>
+
+<% if (enabled) { %>
+  <div class="card">
+    <h2>Values in use</h2>
+    <div class="table-wrap">
+      <table class="data">
+        <tbody>
+          <tr>
+            <th style="width:210px">Tenant ID</th>
+            <td class="mono"><%= check.tenantId || '(empty)' %></td>
+            <td class="muted small">Entra → Overview → Directory (tenant) ID</td>
+          </tr>
+          <tr>
+            <th>Client ID</th>
+            <td class="mono"><%= check.clientId || '(empty)' %></td>
+            <td class="muted small">Entra → Overview → Application (client) ID</td>
+          </tr>
+          <tr>
+            <th>Client secret</th>
+            <td class="mono"><%= check.secretSet ? `set (${check.secretLength} characters)` : '(empty)' %></td>
+            <td class="muted small">Certificates &amp; secrets → the <strong>Value</strong> column, not Secret ID. Around 40 characters.</td>
+          </tr>
+          <tr>
+            <th>Redirect URI</th>
+            <td class="mono"><%= check.redirectUri %></td>
+            <td class="muted small">Must be listed <em>exactly</em> under Authentication → Web. Built from <span class="mono">BASE_URL</span>.</td>
+          </tr>
+          <tr>
+            <th>Login host</th>
+            <td class="mono"><%= check.authorityHost %></td>
+            <td class="muted small">Only change for sovereign clouds.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <% if (authorizeUrl) { %>
+    <div class="card">
+      <h2>The exact sign-in URL</h2>
+      <p class="muted small">This is what the Microsoft button opens. Open it to test — a fresh <span class="mono">state</span> and <span class="mono">nonce</span> are generated each time, so this particular link only works once.</p>
+      <pre class="mono" style="background:#f6f9fb;padding:12px;border-radius:8px;overflow-x:auto;white-space:pre-wrap;word-break:break-all"><%= authorizeUrl %></pre>
+    </div>
+  <% } %>
+
+  <div class="card">
+    <h2>What the common errors mean</h2>
+    <div class="table-wrap">
+      <table class="data">
+        <thead><tr><th>Code</th><th>Cause</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">AADSTS90013</td><td>A malformed parameter — usually <span class="mono">&lt; &gt;</span> brackets or quotes left around an ID when pasting it into the host's variables.</td></tr>
+          <tr><td class="mono">AADSTS50011</td><td>Redirect URI mismatch. The value above must appear character-for-character under Authentication → Web.</td></tr>
+          <tr><td class="mono">AADSTS700016</td><td>Application not found — wrong client ID, or the app was registered in a different tenant.</td></tr>
+          <tr><td class="mono">AADSTS7000215</td><td>Invalid client secret — the Secret ID was copied instead of the Value, or the secret expired.</td></tr>
+          <tr><td class="mono">AADSTS90002</td><td>Tenant not found — wrong tenant ID.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+<% } %>
+
+<%- include('../partials/foot') %>

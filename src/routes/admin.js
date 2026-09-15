@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 const { db, dbPath, backupTo } = require('../db');
+const config = require('../config');
 const auth = require('../lib/auth');
 const sched = require('../lib/scheduling');
 const { parseCsvObjects } = require('../lib/csv');
@@ -739,6 +740,28 @@ router.post('/notifications/test-reminders', auth.requireRole('admin'), async (r
   const out = await runReminders();
   req.flash('success', `Reminder run finished — ${out.sent} message set(s) processed.`);
   res.redirect('/admin/notifications');
+});
+
+/* ------------------------- SSO diagnostics -------------------------- */
+
+/** Shows exactly what the app will send to Microsoft, so an AADSTS code can be traced. */
+router.get('/sso-check', auth.requireRole('admin'), (req, res) => {
+  const ssoService = require('../services/entra-sso');
+  const check = config.entra.enabled ? ssoService.diagnose() : null;
+  let authorizeUrl = null;
+  if (check && check.ok) {
+    try {
+      authorizeUrl = ssoService.buildAuthUrl().url;
+    } catch (_) {
+      authorizeUrl = null;
+    }
+  }
+  res.render('admin/sso-check', {
+    title: 'Microsoft sign-in check',
+    enabled: config.entra.enabled,
+    check,
+    authorizeUrl,
+  });
 });
 
 /* --------------------------- back-ups ------------------------------ */
