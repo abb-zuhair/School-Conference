@@ -267,6 +267,23 @@ table.data tbody tr:hover { background: #fafcfd; }
 .slot button:hover { border-color: var(--navy); background: var(--navy-soft); }
 .slot button.selected { background: var(--navy); border-color: var(--navy); color: #fff; font-weight: 600; }
 .slot .taken { background: #f1f4f6; color: #9aabb8; cursor: not-allowed; text-decoration: line-through; }
+.slot .clash {
+  width: 100%; border-radius: 9px; padding: 11px 6px; font-size: .9rem;
+  border: 1px solid #e6c3c5; background: var(--bad-bg); color: var(--bad);
+  text-align: center; cursor: not-allowed;
+}
+.slot .clash .cap { color: var(--bad); font-weight: 600; }
+.compare .cell-clash {
+  display: block; border-radius: 6px; padding: 7px 4px; font-size: .82rem;
+  background: var(--bad-bg); color: var(--bad); cursor: not-allowed;
+}
+.held-note {
+  margin-top: 14px; padding: 12px 14px; border-radius: 10px;
+  background: var(--warn-bg); border: 1px solid #ecd9a8; color: var(--warn);
+}
+.held-note ul { margin: 6px 0 6px; padding-inline-start: 18px; }
+.held-note strong { color: var(--warn); }
+
 .slot .cap { display: block; font-size: .72rem; color: var(--muted); }
 .slot button.selected .cap { color: #cfe3f0; }
 

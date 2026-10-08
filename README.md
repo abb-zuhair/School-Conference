@@ -67,7 +67,7 @@ forged `state`.
 | Rule | Where it is set |
 |---|---|
 | Max appointments per student | Event setting (`0` = unlimited) |
-| No two appointments at the same clock time for one family | Event setting `prevent_overlap` |
+| No two appointments at the same clock time for one family | Event setting `prevent_overlap` — refused the moment the parent picks it, and clashing times render in red in both the slot picker and the compare grid |
 | One appointment per teacher per student | Always on |
 | No double-booking a full slot | Enforced inside a SQL transaction — two parents clicking at once cannot both win |
 | No booking a locked schedule or a past time | Always on |
@@ -163,6 +163,34 @@ New-ApplicationAccessPolicy -AppId <client-id> -PolicyScopeGroupId noreply@aca.e
 Leave the Graph variables blank and email is skipped cleanly — the booking still works and the message log records it as `skipped`.
 
 ### WhatsApp — WATI
+
+**Set this up from the admin screens, not here.** Sign in as an admin and open **WhatsApp** in the
+admin menu: endpoint, access token, country code and template names all live there, take effect
+immediately without a redeploy, and come with a **Send test** button that reports the real API
+response. The token is stored in the database and masked afterwards; leaving the box blank on a
+later save keeps the stored one.
+
+The `WATI_*` environment variables below still work and act as the fallback when a field is blank
+in the form, so an existing deployment keeps running untouched.
+
+**The summary template.** When a parent books several teachers at once they now get **one** WhatsApp
+listing all of them, not one per appointment. Create a template in WATI and put its name in
+**Booking summary**:
+
+| Parameter | Carries |
+|---|---|
+| `{{1}}` | Parent name |
+| `{{2}}` | Event name |
+| `{{3}}` | How many appointments |
+| `{{4}}` | Every appointment on one line |
+| `{{5}}` | Campus |
+| `{{6}}` | Link listing them all, each with its own cancel link |
+
+WhatsApp rejects line breaks inside template parameters, which is why `{{4}}` is a single line with
+`·` between appointments. Leave **Booking summary** blank and it falls back to one message per
+appointment using the single-confirmation template. Emails stay per appointment either way, since
+each carries its own cancel link.
+
 
 Set `WATI_API_ENDPOINT` (your `https://live-server-XXXX.wati.io` URL) and `WATI_ACCESS_TOKEN`.
 

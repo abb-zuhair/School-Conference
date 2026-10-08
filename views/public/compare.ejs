@@ -4,7 +4,10 @@
 
 <div class="card">
   <h1>Compare schedules</h1>
-  <p class="muted small">Green cells are free. Click one to add it to your selection — the same clock time can only be taken once.</p>
+  <p class="muted small">
+    Green cells are free — click one to add it. Cells marked <strong style="color:var(--bad)">clashes</strong>
+    are at the same clock time as something you have already chosen, so they cannot be taken.
+  </p>
   <% if (dates.length > 1) { %>
     <div class="btn-row">
       <% dates.forEach(function (d) { %>
@@ -37,6 +40,8 @@
                 <span class="cell-none">—</span>
               <% } else if (slot.is_full || s.locked) { %>
                 <span class="cell-none">booked</span>
+              <% } else if (clashes.has(slot.id)) { %>
+                <span class="cell-clash" title="You already have another appointment at this time">clashes</span>
               <% } else { %>
                 <form method="post" action="/e/<%= event.slug %>/select">
                   <input type="hidden" name="slot_id" value="<%= slot.id %>">

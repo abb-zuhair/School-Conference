@@ -6,6 +6,7 @@ const fs = require('fs');
 const multer = require('multer');
 const { db, dbPath, backupTo } = require('../db');
 const config = require('../config');
+const settings = require('../lib/settings');
 const auth = require('../lib/auth');
 const sched = require('../lib/scheduling');
 const { parseCsvObjects } = require('../lib/csv');
@@ -1124,6 +1125,105 @@ router.post('/notifications/test-reminders', auth.requireRole('admin'), async (r
   const out = await runReminders();
   req.flash('success', `Reminder run finished — ${out.sent} message set(s) processed.`);
   res.redirect('/admin/notifications');
+});
+
+/* ------------------------ WhatsApp settings ------------------------- */
+
+const WATI_KEYS = {
+  endpoint: 'wati.endpoint',
+  token: 'wati.token',
+  country_code: 'wati.country_code',
+  template_summary: 'wati.template.summary',
+  template_confirmation: 'wati.template.confirmation',
+  template_cancellation: 'wati.template.cancellation',
+  template_reminder: 'wati.template.reminder',
+};
+
+function messagingView(req, extra = {}) {
+  const wati = require('../services/wati');
+  const cfg = wati.current();
+  const tokenSet = Boolean(cfg.token);
+  return {
+    title: 'WhatsApp messaging',
+    cfg,
+    tokenSet,
+    tokenHint: tokenSet ? `${'•'.repeat(8)}${cfg.token.slice(-4)}` : '',
+    fromForm: {
+      endpoint: settings.get('wati.endpoint', ''),
+      country_code: settings.get('wati.country_code', ''),
+      template_summary: settings.get('wati.template.summary', ''),
+      template_confirmation: settings.get('wati.template.confirmation', ''),
+      template_cancellation: settings.get('wati.template.cancellation', ''),
+      template_reminder: settings.get('wati.template.reminder', ''),
+    },
+    baseUrl: config.baseUrl,
+    result: null,
+    ...extra,
+  };
+}
+
+router.get('/messaging', auth.requireRole('admin'), (req, res) => {
+  res.render('admin/messaging', messagingView(req));
+});
+
+router.post('/messaging', auth.requireRole('admin'), (req, res) => {
+  const pairs = {
+    [WATI_KEYS.endpoint]: String(req.body.endpoint || '').trim().replace(/\/+$/, ''),
+    [WATI_KEYS.country_code]: String(req.body.country_code || '').replace(/\D/g, ''),
+    [WATI_KEYS.template_summary]: String(req.body.template_summary || '').trim(),
+    [WATI_KEYS.template_confirmation]: String(req.body.template_confirmation || '').trim(),
+    [WATI_KEYS.template_cancellation]: String(req.body.template_cancellation || '').trim(),
+    [WATI_KEYS.template_reminder]: String(req.body.template_reminder || '').trim(),
+  };
+  // An empty token box means "leave the stored one alone", so a careless save
+  // cannot wipe the credential.
+  const token = String(req.body.token || '').trim();
+  if (token) pairs[WATI_KEYS.token] = token;
+  if (asBool(req.body.clear_token)) pairs[WATI_KEYS.token] = '';
+
+  settings.setMany(pairs);
+  auth.audit(auth.currentUser(req).id, 'messaging_settings', {
+    endpointSet: Boolean(pairs[WATI_KEYS.endpoint]),
+    tokenChanged: Boolean(token) || asBool(req.body.clear_token),
+  });
+  req.flash('success', 'WhatsApp settings saved.');
+  res.redirect('/admin/messaging');
+});
+
+/** Send a real template message to one number so the settings can be proven. */
+router.post('/messaging/test', auth.requireRole('admin'), async (req, res) => {
+  const wati = require('../services/wati');
+  const { log } = require('../services/notify');
+  const phone = String(req.body.test_phone || '').trim();
+  const cfg = wati.current();
+  const template = String(req.body.test_template || '').trim() || cfg.templates.summary || cfg.templates.confirmation;
+
+  let result;
+  if (!phone) {
+    result = { status: 'failed', detail: 'Enter a mobile number to send the test to.' };
+  } else if (!cfg.enabled) {
+    result = { status: 'failed', detail: 'Set the API endpoint and access token first.' };
+  } else if (!template) {
+    result = { status: 'failed', detail: 'Set at least one template name first.' };
+  } else {
+    const sample = [
+      auth.currentUser(req).name,
+      'Parent–Teacher Conference — Test',
+      '2',
+      `${formatDate(new Date().toISOString().slice(0, 10))} 3:10 PM — Sara Al-Mutairi  ·  3:30 PM — Ahmad Al-Rashidi`,
+      'ACA Hawally',
+      `${config.baseUrl}/lookup`,
+    ];
+    try {
+      const r = await wati.sendTemplate(phone, template, sample);
+      result = r;
+    } catch (err) {
+      result = { status: 'failed', detail: err.message };
+    }
+    log(null, 'whatsapp', 'test', phone, result.status, result.detail);
+  }
+
+  res.render('admin/messaging', messagingView(req, { result, testPhone: phone, testTemplate: template }));
 });
 
 /* ------------------------- SSO diagnostics -------------------------- */

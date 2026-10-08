@@ -102,17 +102,19 @@ function slotIds(html) {
   r = await req(p, 'GET', '/e/ptc-term1-hawally/review');
   check('review page lists both selections', (r.text.match(/Remove<\/button>/g) || []).length === 2);
 
-  /* ---------------- overlap rule ---------------- */
+  /* ---------------- overlap rule, caught at selection ---------------- */
   const overlapJar = jar();
   await req(overlapJar, 'POST', '/e/ptc-term1-hawally/select', { slot_id: slotsA[0], action: 'add' });
-  await req(overlapJar, 'POST', '/e/ptc-term1-hawally/select', { slot_id: slotsB[0], action: 'add' });
-  r = await req(overlapJar, 'POST', '/e/ptc-term1-hawally/confirm', {
-    parent_name: 'Overlap Tester',
-    parent_email: 'overlap@example.com',
-    parent_phone: '99000000',
-    student_name: 'Overlap Child',
-  });
-  check('overlapping times are rejected', r.status === 400 && r.text.includes('same time'));
+  r = await req(overlapJar, 'POST', '/e/ptc-term1-hawally/select', { slot_id: slotsB[0], action: 'add' });
+  check('clashing pick redirects back', r.status === 302);
+
+  r = await follow(overlapJar, '/e/ptc-term1-hawally/review');
+  check('clashing time is refused on the spot', r.text.includes('You have already chosen'));
+  check('only the first time stayed in the basket', (r.text.match(/Remove<\/button>/g) || []).length === 1);
+
+  r = await req(overlapJar, 'GET', `/e/ptc-term1-hawally/s/${schedIds[1]}`);
+  check('the clashing time shows as a clash in the picker', r.text.includes('clashes'));
+  check('the held time is listed back to the parent', r.text.includes('Times you have already chosen'));
 
   /* ---------------- validation ---------------- */
   r = await req(p, 'POST', '/e/ptc-term1-hawally/confirm', {

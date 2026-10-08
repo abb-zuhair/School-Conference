@@ -17,6 +17,18 @@
   </div>
   <% if (schedule.notes) { %><div class="instructions"><%= schedule.notes %></div><% } %>
   <p class="muted small">Pick a time below. You can add more teachers before confirming.</p>
+
+  <% if (held.length) { %>
+    <div class="held-note">
+      <strong class="small">Times you have already chosen</strong>
+      <ul class="small">
+        <% held.forEach(function (item) { %>
+          <li><strong><%= h.formatTime(item.start_time) %></strong> on <%= h.formatShortDate(item.slot_date) %> — <%= item.display_name %></li>
+        <% }); %>
+      </ul>
+      <span class="small muted">Those clock times are shown in red below — you cannot be in two rooms at once.</span>
+    </div>
+  <% } %>
 </div>
 
 <% var dates = Object.keys(byDate).sort(); %>
@@ -32,6 +44,11 @@
         <div class="slot">
           <% if (s.is_full) { %>
             <div class="taken"><%= h.formatTime(s.start_time) %></div>
+          <% } else if (clashes.has(s.id)) { %>
+            <div class="clash" title="You already have another appointment at this time">
+              <%= h.formatTime(s.start_time) %>
+              <span class="cap">clashes</span>
+            </div>
           <% } else { %>
             <form method="post" action="/e/<%= event.slug %>/select">
               <input type="hidden" name="slot_id" value="<%= s.id %>">

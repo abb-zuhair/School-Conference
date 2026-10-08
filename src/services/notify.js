@@ -2,8 +2,10 @@
 const { db } = require('../db');
 const config = require('../config');
 const { sendMail } = require('./graph-mail');
-const { sendTemplate } = require('./wati');
-const { formatDate, formatTime, escapeHtml, MODES, EVENT_TYPES } = require('../lib/helpers');
+const wati = require('./wati');
+
+const { sendTemplate } = wati;
+const { formatDate, formatShortDate, formatTime, escapeHtml, MODES, EVENT_TYPES } = require('../lib/helpers');
 
 function log(bookingId, channel, kind, recipient, status, detail) {
   try {
@@ -154,7 +156,7 @@ async function notify(booking, kind) {
     );
   }
 
-  const template = config.wati.templates[kind];
+  const template = wati.current().templates[kind];
   if (booking.parent_phone) {
     tasks.push(
       sendTemplate(booking.parent_phone, template, whatsappParams(booking))
@@ -168,6 +170,95 @@ async function notify(booking, kind) {
 
 function notifyAsync(booking, kind) {
   notify(booking, kind).catch((err) => console.error('[notify]', err.message));
+}
+
+/* ------------------- one message for a whole booking ------------------- *
+ * A parent who books four teachers should get four emails — each carries its
+ * own cancel link — but only one WhatsApp, listing the lot.
+ *
+ * Summary template parameters (submit this shape to WATI):
+ *   {{1}} parent name
+ *   {{2}} event name
+ *   {{3}} how many appointments
+ *   {{4}} the appointments, one line: "Sun 27 Sep 3:10 PM — Sara Al-Mutairi · ..."
+ *   {{5}} campus
+ *   {{6}} link showing all of them, with a cancel link each
+ * ---------------------------------------------------------------------- */
+
+/** WhatsApp template parameters cannot contain newlines, so this stays one line. */
+function summaryLine(bookings) {
+  return bookings
+    .map((b) => `${formatShortDate(b.slot_date)} ${formatTime(b.start_time)} — ${withWhom(b)}${b.location ? ` (${b.location})` : ''}`)
+    .join('  ·  ');
+}
+
+function summaryParams(bookings) {
+  const first = bookings[0];
+  return [
+    first.parent_name,
+    first.event_name,
+    String(bookings.length),
+    summaryLine(bookings),
+    first.campus_name || '-',
+    `${config.baseUrl}/confirmation/${first.group_token}`,
+  ];
+}
+
+/**
+ * Confirmation for one submission: an email per appointment, and a single
+ * WhatsApp covering all of them. Falls back to per-appointment WhatsApp
+ * messages when no summary template has been configured.
+ */
+async function notifyBookingGroup(bookings) {
+  if (!bookings || !bookings.length) return;
+  const cfg = wati.current();
+  const summaryTemplate = cfg.templates.summary;
+  const phone = bookings[0].parent_phone;
+
+  const tasks = [];
+
+  // Emails stay per appointment — each one carries its own cancel link.
+  for (const booking of bookings) {
+    const mail = EMAIL_BUILDERS.confirmation(booking);
+    if (booking.parent_email) {
+      tasks.push(
+        sendMail({
+          to: booking.parent_email,
+          subject: mail.subject,
+          html: mail.html,
+          replyTo: booking.staff_email || config.supportEmail || undefined,
+        })
+          .then((r) => log(booking.id, 'email', 'confirmation', booking.parent_email, r.status, r.detail))
+          .catch((err) => log(booking.id, 'email', 'confirmation', booking.parent_email, 'failed', err.message))
+      );
+    }
+  }
+
+  if (phone) {
+    if (summaryTemplate) {
+      tasks.push(
+        sendTemplate(phone, summaryTemplate, summaryParams(bookings))
+          .then((r) =>
+            log(bookings[0].id, 'whatsapp', 'summary', phone, r.status, `${bookings.length} appointment(s) — ${r.detail}`)
+          )
+          .catch((err) => log(bookings[0].id, 'whatsapp', 'summary', phone, 'failed', err.message))
+      );
+    } else {
+      for (const booking of bookings) {
+        tasks.push(
+          sendTemplate(phone, cfg.templates.confirmation, whatsappParams(booking))
+            .then((r) => log(booking.id, 'whatsapp', 'confirmation', phone, r.status, r.detail))
+            .catch((err) => log(booking.id, 'whatsapp', 'confirmation', phone, 'failed', err.message))
+        );
+      }
+    }
+  }
+
+  await Promise.allSettled(tasks);
+}
+
+function notifyBookingGroupAsync(bookings) {
+  notifyBookingGroup(bookings).catch((err) => console.error('[notify]', err.message));
 }
 
 /** Copy of the booking sheet for the teacher, sent when a parent books. */
@@ -192,4 +283,15 @@ async function notifyStaff(booking) {
   }
 }
 
-module.exports = { notify, notifyAsync, notifyStaff, log, whereLine, withWhom };
+module.exports = {
+  notify,
+  notifyAsync,
+  notifyBookingGroup,
+  notifyBookingGroupAsync,
+  summaryParams,
+  summaryLine,
+  notifyStaff,
+  log,
+  whereLine,
+  withWhom,
+};

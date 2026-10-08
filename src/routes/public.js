@@ -3,7 +3,7 @@ const express = require('express');
 const { db } = require('../db');
 const config = require('../config');
 const sched = require('../lib/scheduling');
-const { notifyAsync, notifyStaff } = require('../services/notify');
+const { notifyAsync, notifyBookingGroupAsync, notifyStaff } = require('../services/notify');
 const {
   isEmail,
   nowLocal,
@@ -78,6 +78,28 @@ function basketDetail(slotIds) {
     )
     .all(...slotIds);
   return rows.map((r) => ({ ...r, display_name: r.label || r.class_name || r.staff_name || 'Appointment' }));
+}
+
+/** The basket entry that overlaps `slotId`, or null if the time is free. */
+function findClash(basketSlotIds, slotId) {
+  if (!basketSlotIds.length) return null;
+  const incoming = basketDetail([slotId])[0];
+  if (!incoming) return null;
+  const existing = basketDetail(basketSlotIds).find((e) => e.id !== slotId && sched.overlaps(e, incoming));
+  return existing ? { existing, incoming } : null;
+}
+
+/** Ids among `slots` that collide with something the parent already holds. */
+function clashingSlotIds(basketSlotIds, slots) {
+  const out = new Set();
+  if (!basketSlotIds.length) return out;
+  const held = basketDetail(basketSlotIds);
+  for (const s of slots) {
+    if (basketSlotIds.includes(s.id)) continue;
+    const hit = held.find((h) => sched.overlaps(h, s));
+    if (hit) out.add(s.id);
+  }
+  return out;
 }
 
 /* ------------------------------ home ------------------------------- */
@@ -185,11 +207,14 @@ router.get('/e/:slug/s/:scheduleId', loadEvent, requireOpenEvent, (req, res) => 
     (byDate[s.slot_date] = byDate[s.slot_date] || []).push(s);
   }
   const b = basket(req, req.event.id);
+  const clashes = req.event.prevent_overlap ? clashingSlotIds(b.slotIds, slots) : new Set();
   return res.render('public/slots', {
     title: `${schedule.display_name} — ${req.event.name}`,
     schedule,
     byDate,
     selected: b.slotIds,
+    clashes,
+    held: basketDetail(b.slotIds),
     modes: MODES,
   });
 });
@@ -219,6 +244,7 @@ router.get('/e/:slug/compare', loadEvent, requireOpenEvent, (req, res) => {
   ].sort();
 
   const b = basket(req, req.event.id);
+  const allSlots = schedules.flatMap((s) => s.slots);
   return res.render('public/compare', {
     title: `Compare schedules — ${req.event.name}`,
     schedules,
@@ -226,6 +252,7 @@ router.get('/e/:slug/compare', loadEvent, requireOpenEvent, (req, res) => {
     activeDate,
     times,
     selected: b.slotIds,
+    clashes: req.event.prevent_overlap ? clashingSlotIds(b.slotIds, allSlots) : new Set(),
   });
 });
 
@@ -238,7 +265,18 @@ router.post('/e/:slug/select', loadEvent, requireOpenEvent, (req, res) => {
     if (action === 'remove') {
       b.slotIds = b.slotIds.filter((id) => id !== slotId);
     } else if (!b.slotIds.includes(slotId)) {
-      b.slotIds.push(slotId);
+      // Catch a clash here rather than letting the parent fill in the whole form
+      // and be refused at the end.
+      const clash = req.event.prevent_overlap ? findClash(b.slotIds, slotId) : null;
+      if (clash) {
+        req.flash(
+          'error',
+          `You have already chosen ${formatTime(clash.existing.start_time)} on ${formatDate(clash.existing.slot_date)} ` +
+            `with ${clash.existing.display_name}. You cannot be in two places at once — remove that one first, or pick another time.`
+        );
+      } else {
+        b.slotIds.push(slotId);
+      }
     }
   }
 
@@ -309,11 +347,10 @@ router.post('/e/:slug/confirm', loadEvent, requireOpenEvent, async (req, res, ne
 
     req.session.basket = { eventId: event.id, slotIds: [] };
 
-    for (const id of result.ids) {
-      const booking = sched.bookingById(id);
-      notifyAsync(booking, 'confirmation');
-      notifyStaff(booking).catch(() => {});
-    }
+    // One WhatsApp covering the whole submission, one email per appointment.
+    const created = result.ids.map((id) => sched.bookingById(id)).filter(Boolean);
+    notifyBookingGroupAsync(created);
+    for (const booking of created) notifyStaff(booking).catch(() => {});
 
     return res.redirect(`/confirmation/${result.groupToken}`);
   } catch (err) {

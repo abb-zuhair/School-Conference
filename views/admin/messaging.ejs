@@ -1,0 +1,156 @@
+<%- include('../partials/head') %>
+<%- include('../partials/admin-nav') %>
+
+<div class="card">
+  <div class="card-head">
+    <div>
+      <h1>WhatsApp messaging</h1>
+      <div class="muted small">
+        Parents get a WhatsApp when they book and when they cancel. Fill this in and it takes effect
+        immediately — no redeploy.
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <span class="badge <%= cfg.enabled ? 'ok' : 'muted' %>"><%= cfg.enabled ? 'Connected' : 'Not configured' %></span>
+  </div>
+
+  <% if (cfg.enabled) { %>
+    <div class="alert success" style="margin-bottom:0">
+      Sending through <span class="mono"><%= cfg.endpoint %></span>, settings taken from the <%= cfg.source %>.
+    </div>
+  <% } else { %>
+    <div class="alert info" style="margin-bottom:0">
+      WhatsApp is off. Bookings still work and confirmations still go by email — messages are recorded as
+      <span class="mono">skipped</span> in the message log.
+    </div>
+  <% } %>
+</div>
+
+<% if (typeof result !== 'undefined' && result) { %>
+  <div class="card tight">
+    <div class="alert <%= result.status === 'sent' ? 'success' : result.status === 'skipped' ? 'info' : 'error' %>" style="margin-bottom:0">
+      <strong>Test <%= result.status %>.</strong> <%= result.detail %>
+    </div>
+  </div>
+<% } %>
+
+<form method="post" action="/admin/messaging" class="card">
+  <h2>Connection</h2>
+  <div class="row">
+    <div class="field">
+      <label for="endpoint">API endpoint *</label>
+      <input id="endpoint" name="endpoint" type="url" value="<%= fromForm.endpoint %>"
+             placeholder="https://live-server-12345.wati.io">
+      <div class="hint">WATI → API Docs. The server address only, with no path and no trailing slash.</div>
+    </div>
+    <div class="field">
+      <label for="country_code">Default country code</label>
+      <input id="country_code" name="country_code" type="text" value="<%= fromForm.country_code %>" placeholder="965">
+      <div class="hint">Added to 8-digit Kuwaiti numbers parents type without one.</div>
+    </div>
+  </div>
+
+  <div class="field">
+    <label for="token">Access token <%= tokenSet ? '' : '*' %></label>
+    <input id="token" name="token" type="password" autocomplete="off"
+           placeholder="<%= tokenSet ? 'Stored — ' + tokenHint + '. Leave blank to keep it.' : 'Paste the WATI access token' %>">
+    <div class="hint">
+      Stored in the application database, never shown again after saving.
+      <% if (tokenSet) { %>
+        <label class="check" style="margin-top:8px">
+          <input type="checkbox" name="clear_token" value="1">
+          <span>Remove the stored token and fall back to the environment variable</span>
+        </label>
+      <% } %>
+    </div>
+  </div>
+
+  <h2 style="margin-top:22px">Template names</h2>
+  <p class="muted small">
+    The names exactly as they appear in WATI → Broadcast → Templates, after Meta approves them.
+    Leave one blank and that message type is skipped.
+  </p>
+
+  <div class="row">
+    <div class="field">
+      <label for="template_summary">Booking summary <span class="muted">(one message, all appointments)</span></label>
+      <input id="template_summary" name="template_summary" value="<%= fromForm.template_summary %>" placeholder="appointment_summary">
+      <div class="hint">Used when a parent confirms. Leave blank to send one message per appointment instead.</div>
+    </div>
+    <div class="field">
+      <label for="template_confirmation">Single confirmation</label>
+      <input id="template_confirmation" name="template_confirmation" value="<%= fromForm.template_confirmation %>" placeholder="appointment_confirmed">
+      <div class="hint">Fallback when no summary template is set.</div>
+    </div>
+  </div>
+  <div class="row">
+    <div class="field">
+      <label for="template_cancellation">Cancellation</label>
+      <input id="template_cancellation" name="template_cancellation" value="<%= fromForm.template_cancellation %>" placeholder="appointment_cancelled">
+    </div>
+    <div class="field">
+      <label for="template_reminder">Reminder</label>
+      <input id="template_reminder" name="template_reminder" value="<%= fromForm.template_reminder %>" placeholder="appointment_reminder">
+    </div>
+  </div>
+
+  <div class="btn-row"><button class="btn" type="submit">Save settings</button></div>
+</form>
+
+<form method="post" action="/admin/messaging/test" class="card">
+  <h2>Send a test</h2>
+  <p class="muted small">Sends a real template message with sample values, and records the attempt in the message log.</p>
+  <div class="row">
+    <div class="field">
+      <label for="test_phone">Mobile number</label>
+      <input id="test_phone" name="test_phone" type="tel" value="<%= typeof testPhone !== 'undefined' ? testPhone : '' %>" placeholder="9xxxxxxx">
+      <div class="hint">Kuwaiti numbers can be typed without the country code.</div>
+    </div>
+    <div class="field">
+      <label for="test_template">Template to use</label>
+      <input id="test_template" name="test_template" value="<%= typeof testTemplate !== 'undefined' ? testTemplate : '' %>" placeholder="<%= cfg.templates.summary || cfg.templates.confirmation || 'appointment_summary' %>">
+      <div class="hint">Defaults to the summary template.</div>
+    </div>
+  </div>
+  <div class="btn-row"><button class="btn ghost" type="submit">Send test message</button></div>
+</form>
+
+<div class="card">
+  <h2>The templates to submit to WATI</h2>
+  <p class="muted small">
+    WhatsApp only delivers pre-approved templates to someone who has not messaged you in the last 24 hours,
+    so these must exist in WATI with the placeholders in this order. Parameter values cannot contain line
+    breaks — the app puts the whole appointment list on one line for you.
+  </p>
+
+  <h3>Booking summary <span class="muted small">— the one parents get after confirming</span></h3>
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th style="width:70px">Field</th><th>Carries</th><th>Example</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">{{1}}</td><td>Parent name</td><td class="small">Fatima Al-Otaibi</td></tr>
+        <tr><td class="mono">{{2}}</td><td>Event name</td><td class="small">Parent–Teacher Conference — Term 1</td></tr>
+        <tr><td class="mono">{{3}}</td><td>How many appointments</td><td class="small">3</td></tr>
+        <tr><td class="mono">{{4}}</td><td>All appointments, one line</td><td class="small">Sun 27 Sep 3:10 PM — Sara Al-Mutairi (Room B-204) · Sun 27 Sep 3:30 PM — Ahmad Al-Rashidi</td></tr>
+        <tr><td class="mono">{{5}}</td><td>Campus</td><td class="small">ACA Hawally</td></tr>
+        <tr><td class="mono">{{6}}</td><td>Link listing them all, each with a cancel link</td><td class="small mono"><%= baseUrl %>/confirmation/…</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="muted small" style="margin-top:10px">Suggested body text:</p>
+  <pre class="mono" style="background:#f6f9fb;padding:12px;border-radius:8px;white-space:pre-wrap">Hello {{1}}, your {{3}} appointment(s) for {{2}} at {{5}} are confirmed.
+
+{{4}}
+
+View or cancel: {{6}}</pre>
+
+  <h3 style="margin-top:20px">Cancellation and reminder</h3>
+  <p class="muted small">These stay per appointment and use the seven-parameter shape:</p>
+  <pre class="mono" style="background:#f6f9fb;padding:12px;border-radius:8px;white-space:pre-wrap">{{1}} parent name · {{2}} event · {{3}} with whom · {{4}} date · {{5}} time · {{6}} location or link · {{7}} manage URL</pre>
+
+  <div class="btn-row" style="margin-top:14px">
+    <a class="btn ghost sm" href="/admin/notifications">Open the message log</a>
+  </div>
+</div>
+
+<%- include('../partials/foot') %>
