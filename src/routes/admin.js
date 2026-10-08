@@ -229,7 +229,10 @@ router.post('/staff', (req, res) => {
     req.flash(
       'success',
       result.created
-        ? `Staff account created. Temporary password: ${result.tempPassword} — they must change it at first sign-in.`
+        ? config.entra.enabled
+          ? `Staff account created. They can sign in with Microsoft straight away — nothing to hand over. ` +
+            `Temporary password, only if they cannot use Microsoft: ${result.tempPassword}`
+          : `Staff account created. Temporary password: ${result.tempPassword} — they must change it at first sign-in.`
         : 'Staff record updated.'
     );
   } catch (err) {
@@ -401,7 +404,12 @@ router.post('/staff/:id/reset-password', (req, res) => {
   const temp = token(6);
   db.prepare('UPDATE staff SET password_hash = ?, must_change_pw = 1 WHERE id = ?').run(auth.hashPassword(temp), Number(req.params.id));
   auth.audit(auth.currentUser(req).id, 'staff_password_reset', { staffId: req.params.id });
-  req.flash('success', `New temporary password: ${temp}`);
+  req.flash(
+    'success',
+    config.entra.enabled
+      ? `New temporary password: ${temp} — it stops working as soon as they sign in with Microsoft.`
+      : `New temporary password: ${temp}`
+  );
   res.redirect('/admin/staff');
 });
 

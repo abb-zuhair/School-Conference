@@ -185,6 +185,34 @@ async function signInWithMicrosoft(j) {
   check('login method recorded', sara.last_login_method === 'microsoft');
   check('no password was needed', !sara.password_hash);
 
+  /* ---------- an admin-created account never has to set a password ---------- */
+  db.prepare(
+    `INSERT INTO staff (name, email, role, password_hash, must_change_pw, active)
+     VALUES ('New Teacher','new.teacher@example.aca.edu.kw','teacher',?,1,1)`
+  ).run(authLib.hashPassword('Temp12345'));
+
+  nextClaims = (o) => baseClaims({ ...o, oid: 'oid-new', preferred_username: 'new.teacher@example.aca.edu.kw', name: 'New Teacher' });
+  j = jar();
+  r = await signInWithMicrosoft(j);
+  check('new account signs in with Microsoft', r.status === 302, `status ${r.status}`);
+  check('is not sent to the password page', !String(r.location).includes('/staff/password'), String(r.location));
+  r = await req(j, 'GET', '/staff');
+  check('new account reaches the dashboard', r.status === 200 && r.text.includes('My schedules'));
+
+  const fresh = authLib.findByEmail('new.teacher@example.aca.edu.kw');
+  check('forced password change was cleared', !fresh.must_change_pw);
+  check('the temporary password was discarded', fresh.password_hash === null);
+
+  // ...and that discarded password no longer opens the door.
+  const jTemp = jar();
+  r = await req(jTemp, 'POST', '/staff/login', { email: 'new.teacher@example.aca.edu.kw', password: 'Temp12345' });
+  check('the old temporary password is refused', r.status !== 302, `status ${r.status}`);
+
+  // Setting a password afterwards stays possible, and does not ask for a current one.
+  r = await req(j, 'GET', '/staff/password');
+  check('password page offers to set one', r.status === 200 && r.text.includes('Set a password'));
+  check('no current password is asked for', !r.text.includes('name="current_password"'));
+
   /* ---------- unknown account is refused ---------- */
   nextClaims = (o) => baseClaims({ ...o, oid: 'oid-stranger', preferred_username: 'stranger@example.aca.edu.kw', name: 'A Stranger' });
   j = jar();

@@ -95,9 +95,15 @@ router.get('/microsoft/callback', async (req, res, next) => {
     }
     db.prepare("UPDATE staff SET last_login_at = datetime('now'), last_login_method = 'microsoft' WHERE id = ?").run(user.id);
 
-    // A Microsoft sign-in is proof of identity — no need to force a password change.
-    if (user.must_change_pw && user.password_hash === null) {
-      db.prepare('UPDATE staff SET must_change_pw = 0 WHERE id = ?').run(user.id);
+    // A Microsoft sign-in is proof of identity, so the account is never sent to the
+    // change-password page. The temporary password an admin handed out goes with it:
+    // it was only ever a way in for someone who could not use Microsoft, and by now
+    // at least one other person has seen it.
+    if (user.must_change_pw) {
+      db.prepare('UPDATE staff SET must_change_pw = 0, password_hash = NULL WHERE id = ?').run(user.id);
+      auth.audit(user.id, 'temp_password_dropped_at_sso', { email: user.email });
+      user.must_change_pw = 0;
+      user.password_hash = null;
     }
 
     return req.session.regenerate((err) => {

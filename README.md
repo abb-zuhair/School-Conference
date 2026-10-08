@@ -137,6 +137,8 @@ Once someone has signed in, their Entra object id is stored, so changing their e
 
 **Password sign-in stays available** below the Microsoft button. Keep it: the uniform counter and front-desk accounts may have no mailbox, and it is your way back in if the client secret expires. Accounts that only ever use Microsoft never get a password and are never prompted for one.
 
+**A new member of staff who signs in with Microsoft is never asked to set a password.** Adding a staff record still prints a temporary password, because somebody may have no mailbox or may need in while Microsoft is down — but it is a fallback, not something you have to hand over. The moment that person signs in with Microsoft the forced password change is lifted and the temporary password is discarded, so a code that was read out in a corridor cannot be used later. They can still set a password of their own at any time from **My account → password**; it is optional, and the page says so.
+
 **Things that commonly go wrong**
 
 | Symptom | Cause |
