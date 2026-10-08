@@ -173,23 +173,26 @@ later save keeps the stored one.
 The `WATI_*` environment variables below still work and act as the fallback when a field is blank
 in the form, so an existing deployment keeps running untouched.
 
-**The summary template.** When a parent books several teachers at once they now get **one** WhatsApp
-listing all of them, not one per appointment. Create a template in WATI and put its name in
-**Booking summary**:
+**The templates.** All four — summary, confirmation, cancellation, reminder — take the **same four
+parameters**, because WATI caps a template at four and rejects a body that *ends* with a variable:
 
 | Parameter | Carries |
 |---|---|
 | `{{1}}` | Parent name |
-| `{{2}}` | Event name |
-| `{{3}}` | How many appointments |
-| `{{4}}` | Every appointment on one line |
-| `{{5}}` | Campus |
-| `{{6}}` | Link listing them all, each with its own cancel link |
+| `{{2}}` | Event name, with the campus |
+| `{{3}}` | The appointment(s), on one line |
+| `{{4}}` | Link to view or cancel |
 
-WhatsApp rejects line breaks inside template parameters, which is why `{{4}}` is a single line with
-`·` between appointments. Leave **Booking summary** blank and it falls back to one message per
-appointment using the single-confirmation template. Emails stay per appointment either way, since
-each carries its own cancel link.
+For the summary, `{{3}}` holds every appointment separated by `·` and `{{4}}` opens all of them; for
+the others it is the single appointment and its own link. Line breaks are not allowed inside a
+parameter, which is why the list stays on one line.
+
+Each body must end with a plain line of text, not `{{4}}`. The admin page carries ready-to-paste
+wording for all four.
+
+When a parent books several teachers at once they get **one** WhatsApp listing all of them. Leave
+**Booking summary** blank and it falls back to one message per appointment. Emails stay per
+appointment either way, since each carries its own cancel link.
 
 
 Set `WATI_API_ENDPOINT` (your `https://live-server-XXXX.wati.io` URL) and `WATI_ACCESS_TOKEN`.

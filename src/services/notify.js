@@ -115,25 +115,30 @@ const EMAIL_BUILDERS = {
 };
 
 /* --------------------------- WhatsApp ------------------------------ *
- * Template parameter order (document this when you submit the templates to WATI):
+ * Every template — summary, confirmation, cancellation, reminder — uses the
+ * same four parameters. WATI plans commonly cap a template at four, and the
+ * body must not END with a variable, so the suggested wording on the admin
+ * page closes with a static line.
+ *
  *   {{1}} parent name
- *   {{2}} event name
- *   {{3}} who the appointment is with
- *   {{4}} date
- *   {{5}} time
- *   {{6}} location / link
- *   {{7}} manage-booking URL
+ *   {{2}} event name, with the campus
+ *   {{3}} the appointment(s), on one line
+ *   {{4}} link to view or cancel
  * ------------------------------------------------------------------- */
+
+/** "Parent–Teacher Conference — Term 1 (ACA Hawally)" */
+function eventLabel(b) {
+  return b.campus_name ? `${b.event_name} (${b.campus_name})` : b.event_name;
+}
+
+/** "Sun 27 Sep 3:10 PM — Sara Al-Mutairi (Room B-204)" */
+function appointmentLine(b) {
+  const where = b.location || b.room || '';
+  return `${formatShortDate(b.slot_date)} ${formatTime(b.start_time)} — ${withWhom(b)}${where ? ` (${where})` : ''}`;
+}
+
 function whatsappParams(b) {
-  return [
-    b.parent_name,
-    b.event_name,
-    withWhom(b),
-    formatDate(b.slot_date),
-    formatTime(b.start_time),
-    whereLine(b) || '-',
-    manageUrl(b),
-  ];
+  return [b.parent_name, eventLabel(b), appointmentLine(b), manageUrl(b)];
 }
 
 /* --------------------------- dispatcher ---------------------------- */
@@ -174,32 +179,21 @@ function notifyAsync(booking, kind) {
 
 /* ------------------- one message for a whole booking ------------------- *
  * A parent who books four teachers should get four emails — each carries its
- * own cancel link — but only one WhatsApp, listing the lot.
- *
- * Summary template parameters (submit this shape to WATI):
- *   {{1}} parent name
- *   {{2}} event name
- *   {{3}} how many appointments
- *   {{4}} the appointments, one line: "Sun 27 Sep 3:10 PM — Sara Al-Mutairi · ..."
- *   {{5}} campus
- *   {{6}} link showing all of them, with a cancel link each
+ * own cancel link — but only one WhatsApp, listing the lot. Same four
+ * parameters as every other template.
  * ---------------------------------------------------------------------- */
 
 /** WhatsApp template parameters cannot contain newlines, so this stays one line. */
 function summaryLine(bookings) {
-  return bookings
-    .map((b) => `${formatShortDate(b.slot_date)} ${formatTime(b.start_time)} — ${withWhom(b)}${b.location ? ` (${b.location})` : ''}`)
-    .join('  ·  ');
+  return bookings.map(appointmentLine).join('  ·  ');
 }
 
 function summaryParams(bookings) {
   const first = bookings[0];
   return [
     first.parent_name,
-    first.event_name,
-    String(bookings.length),
+    eventLabel(first),
     summaryLine(bookings),
-    first.campus_name || '-',
     `${config.baseUrl}/confirmation/${first.group_token}`,
   ];
 }

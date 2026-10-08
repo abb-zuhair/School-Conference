@@ -119,36 +119,65 @@
   <h2>The templates to submit to WATI</h2>
   <p class="muted small">
     WhatsApp only delivers pre-approved templates to someone who has not messaged you in the last 24 hours,
-    so these must exist in WATI with the placeholders in this order. Parameter values cannot contain line
-    breaks — the app puts the whole appointment list on one line for you.
+    so each of these must exist in WATI before the matching message can go out.
   </p>
 
-  <h3>Booking summary <span class="muted small">— the one parents get after confirming</span></h3>
+  <div class="alert info">
+    <strong>All four templates use the same four variables, in this order.</strong>
+    WATI caps a template at four, and it rejects a body that <em>ends</em> with a variable — so every
+    suggested wording below closes with a plain line of text. Keep that last line.
+  </div>
+
   <div class="table-wrap">
     <table class="data">
       <thead><tr><th style="width:70px">Field</th><th>Carries</th><th>Example</th></tr></thead>
       <tbody>
         <tr><td class="mono">{{1}}</td><td>Parent name</td><td class="small">Fatima Al-Otaibi</td></tr>
-        <tr><td class="mono">{{2}}</td><td>Event name</td><td class="small">Parent–Teacher Conference — Term 1</td></tr>
-        <tr><td class="mono">{{3}}</td><td>How many appointments</td><td class="small">3</td></tr>
-        <tr><td class="mono">{{4}}</td><td>All appointments, one line</td><td class="small">Sun 27 Sep 3:10 PM — Sara Al-Mutairi (Room B-204) · Sun 27 Sep 3:30 PM — Ahmad Al-Rashidi</td></tr>
-        <tr><td class="mono">{{5}}</td><td>Campus</td><td class="small">ACA Hawally</td></tr>
-        <tr><td class="mono">{{6}}</td><td>Link listing them all, each with a cancel link</td><td class="small mono"><%= baseUrl %>/confirmation/…</td></tr>
+        <tr><td class="mono">{{2}}</td><td>Event, with the campus</td><td class="small">Parent–Teacher Conference — Term 1 (ACA Hawally)</td></tr>
+        <tr><td class="mono">{{3}}</td><td>The appointment(s), on one line</td><td class="small">Sun 27 Sep 3:10 PM — Sara Al-Mutairi (Room B-204) · Sun 27 Sep 3:30 PM — Ahmad Al-Rashidi (Room A-101)</td></tr>
+        <tr><td class="mono">{{4}}</td><td>Link to view or cancel</td><td class="small mono"><%= baseUrl %>/confirmation/…</td></tr>
       </tbody>
     </table>
   </div>
-  <p class="muted small" style="margin-top:10px">Suggested body text:</p>
-  <pre class="mono" style="background:#f6f9fb;padding:12px;border-radius:8px;white-space:pre-wrap">Hello {{1}}, your {{3}} appointment(s) for {{2}} at {{5}} are confirmed.
+  <p class="muted small" style="margin-top:8px">
+    For the summary, <span class="mono">{{3}}</span> holds every appointment separated by <span class="mono">·</span>
+    and <span class="mono">{{4}}</span> opens all of them. For the others it is the single appointment and its own link.
+    Line breaks are not allowed inside a variable, which is why the list stays on one line.
+  </p>
 
-{{4}}
+  <h3 style="margin-top:22px">1 · Booking summary <span class="muted small">— sent when a parent confirms</span></h3>
+  <pre class="mono tmpl">Hello {{1}}, your appointments for {{2}} are confirmed.
 
-View or cancel: {{6}}</pre>
+{{3}}
 
-  <h3 style="margin-top:20px">Cancellation and reminder</h3>
-  <p class="muted small">These stay per appointment and use the seven-parameter shape:</p>
-  <pre class="mono" style="background:#f6f9fb;padding:12px;border-radius:8px;white-space:pre-wrap">{{1}} parent name · {{2}} event · {{3}} with whom · {{4}} date · {{5}} time · {{6}} location or link · {{7}} manage URL</pre>
+To view or cancel, open {{4}}
+Thank you — American Creativity Academy</pre>
 
-  <div class="btn-row" style="margin-top:14px">
+  <h3 style="margin-top:18px">2 · Single confirmation <span class="muted small">— fallback when no summary template is set</span></h3>
+  <pre class="mono tmpl">Hello {{1}}, your appointment for {{2}} is confirmed.
+
+{{3}}
+
+To view or cancel, open {{4}}
+Thank you — American Creativity Academy</pre>
+
+  <h3 style="margin-top:18px">3 · Cancellation</h3>
+  <pre class="mono tmpl">Hello {{1}}, your appointment for {{2}} has been cancelled.
+
+{{3}}
+
+To book another time, open {{4}}
+Thank you — American Creativity Academy</pre>
+
+  <h3 style="margin-top:18px">4 · Reminder</h3>
+  <pre class="mono tmpl">Hello {{1}}, a reminder of your appointment for {{2}}.
+
+{{3}}
+
+To view or cancel, open {{4}}
+We look forward to seeing you.</pre>
+
+  <div class="btn-row" style="margin-top:16px">
     <a class="btn ghost sm" href="/admin/notifications">Open the message log</a>
   </div>
 </div>

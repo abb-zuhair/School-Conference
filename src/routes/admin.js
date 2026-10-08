@@ -1206,12 +1206,11 @@ router.post('/messaging/test', auth.requireRole('admin'), async (req, res) => {
   } else if (!template) {
     result = { status: 'failed', detail: 'Set at least one template name first.' };
   } else {
+    // Same four values a real message carries.
     const sample = [
       auth.currentUser(req).name,
-      'Parent–Teacher Conference — Test',
-      '2',
-      `${formatDate(new Date().toISOString().slice(0, 10))} 3:10 PM — Sara Al-Mutairi  ·  3:30 PM — Ahmad Al-Rashidi`,
-      'ACA Hawally',
+      'Parent–Teacher Conference — Test (ACA Hawally)',
+      'Sun 27 Sep 3:10 PM — Sara Al-Mutairi (Room B-204)  ·  Sun 27 Sep 3:30 PM — Ahmad Al-Rashidi (Room A-101)',
       `${config.baseUrl}/lookup`,
     ];
     try {

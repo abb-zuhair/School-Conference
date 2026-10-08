@@ -200,6 +200,16 @@ legend { font-weight: 600; font-size: .88rem; padding: 0 6px; }
 }
 table.data td input[type=checkbox], table.data th input[type=checkbox] { width: auto; }
 
+pre.tmpl {
+  background: #f6f9fb;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  white-space: pre-wrap;
+  font-size: .86rem;
+  margin: 6px 0 0;
+}
+
 /* ---------------- danger zone ---------------- */
 
 .danger-zone { border-color: #e6c3c5; background: #fffafa; }

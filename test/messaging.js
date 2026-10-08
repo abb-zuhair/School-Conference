@@ -159,7 +159,9 @@ const settle = () => new Promise((r) => setTimeout(r, 600));
   r = await follow(a, '/admin/messaging');
   check('messaging page renders', r.status === 200 && r.text.includes('WhatsApp messaging'));
   check('starts as not configured', r.text.includes('Not configured'));
-  check('template parameter reference is shown', r.text.includes('All appointments, one line'));
+  check('template parameter reference is shown', r.text.includes('The appointment(s), on one line'));
+  check('the four-variable limit is explained', r.text.includes('same four variables'));
+  check('the no-trailing-variable rule is explained', r.text.includes('ends') && r.text.includes('with a variable'));
 
   r = await req(a, 'POST', '/admin/messaging', {
     endpoint: `http://localhost:${WATI_PORT}/`,
@@ -224,14 +226,15 @@ const settle = () => new Promise((r) => setTimeout(r, 600));
 
   const msg = received[0] || { params: [] };
   check('summary template was used', msg.template === 'appointment_summary');
+  check('exactly four parameters — WATI allows no more', msg.params.length === 4, `${msg.params.length}`);
   check('parent name is first', msg.params[0] === 'Fatima Al-Otaibi');
-  check('count is the number booked', msg.params[2] === '3');
+  check('event carries the campus', (msg.params[1] || '').includes('PTC Term 1') && (msg.params[1] || '').includes('ACA Hawally'));
   check('all three appointments are in one parameter',
-    (msg.params[3] || '').split('·').length === 3, msg.params[3]);
-  check('the list names both teachers', (msg.params[3] || '').includes('Sara Al-Mutairi') && (msg.params[3] || '').includes('Laura Bennett'));
-  check('the room is included', (msg.params[3] || '').includes('Room B-204'));
+    (msg.params[2] || '').split('·').length === 3, msg.params[2]);
+  check('the list names both teachers', (msg.params[2] || '').includes('Sara Al-Mutairi') && (msg.params[2] || '').includes('Laura Bennett'));
+  check('the room is included', (msg.params[2] || '').includes('Room B-204'));
   check('no newlines in any parameter', msg.params.every((p) => !/[\r\n\t]/.test(p)));
-  check('last parameter links to all of them', /\/confirmation\/[A-Za-z0-9_-]+$/.test(msg.params[5] || ''));
+  check('last parameter links to all of them', /\/confirmation\/[A-Za-z0-9_-]+$/.test(msg.params[3] || ''));
 
   /* ---------- the log records it ---------- */
   r = await req(a, 'GET', '/admin/notifications');
@@ -258,6 +261,9 @@ const settle = () => new Promise((r) => setTimeout(r, 600));
   await settle();
   check('without a summary template it sends one each', received.length === 2, `${received.length}`);
   check('fallback uses the single-confirmation template', received.every((m) => m.template === 'appointment_confirmed'));
+  check('per-appointment messages also use four parameters', received.every((m) => m.params.length === 4));
+  check('each names one appointment only', received.every((m) => !(m.params[2] || '').includes('·')));
+  check('each carries its own cancel link', received.every((m) => /\/booking\/[A-Za-z0-9_-]+$/.test(m.params[3] || '')));
 
   /* ---------- turning it off ---------- */
   received.length = 0;
