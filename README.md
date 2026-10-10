@@ -264,6 +264,22 @@ must be mounted.
 sqlite3 /data/app.db ".backup /data/backup-$(date +%F).db"
 ```
 
+**Reading the deploy logs.** Railway stops the old container on every deploy, restart and
+scale-down, which looks like this:
+
+```
+Stopping Container
+SIGTERM received — shutting down.
+  database closed cleanly.
+```
+
+That is an ordinary stop, not a crash: the app closes the HTTP server, checkpoints the
+write-ahead log and closes the database before exiting. A real crash has a JavaScript
+stack trace above the last line and no `SIGTERM received`. The start command is
+`node src/server.js` rather than `npm start` on purpose — with npm in between, an ordinary
+stop was reported as `npm error signal SIGTERM`, which reads like a failure and hides the
+genuine ones.
+
 ---
 
 ## Project layout

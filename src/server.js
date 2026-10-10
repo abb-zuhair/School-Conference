@@ -4,7 +4,7 @@ const express = require('express');
 const session = require('express-session');
 
 const config = require('./config');
-const { migrate, dbPath, isEphemeralStorage } = require('./db');
+const { db, migrate, dbPath, isEphemeralStorage } = require('./db');
 const SqliteStore = require('./db/session-store');
 const auth = require('./lib/auth');
 const helpers = require('./lib/helpers');
@@ -91,6 +91,9 @@ app.use((err, req, res, next) => {
   });
 });
 
+let reminderTask = null;
+let shuttingDown = false;
+
 const server = app.listen(config.port, () => {
   console.log(`${config.schoolName} appointments running on http://localhost:${config.port}`);
   console.log(`  base URL : ${config.baseUrl}`);
@@ -115,7 +118,42 @@ const server = app.listen(config.port, () => {
         '     Railway: add a Volume at /data, then DATABASE_PATH=/data/app.db\n'
     );
   }
-  reminders.start();
+  reminderTask = reminders.start();
 });
+
+/**
+ * Railway sends SIGTERM on every redeploy, restart and scale-down. Without this the
+ * process is simply killed: requests in flight are dropped and SQLite is cut off
+ * mid-write, leaving the write-ahead log on the volume to be replayed at next start.
+ * Close things in order instead, and say so in the log, so a real crash is never
+ * confused with an ordinary stop.
+ */
+function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`\n${signal} received — shutting down.`);
+
+  if (reminderTask && typeof reminderTask.stop === 'function') reminderTask.stop();
+
+  const done = (code) => {
+    try {
+      db.pragma('wal_checkpoint(TRUNCATE)');
+      db.close();
+      console.log('  database closed cleanly.');
+    } catch (err) {
+      console.warn(`  database did not close cleanly: ${err.message}`);
+    }
+    process.exit(code);
+  };
+
+  server.close(() => done(0));
+  // Don't let a hung keep-alive connection hold the deploy open.
+  setTimeout(() => {
+    console.warn('  connections did not close in 10s — closing anyway.');
+    done(0);
+  }, 10000).unref();
+}
+
+for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => shutdown(signal));
 
 module.exports = { app, server };
