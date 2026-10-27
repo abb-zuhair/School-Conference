@@ -245,7 +245,15 @@ Kuwaiti numbers typed as 8 digits get `DEFAULT_COUNTRY_CODE` (965) prepended aut
 
 ## Deploying to Railway
 
-**The short version, once it is set up:** from the project folder on Windows,
+**The short version: double-click `deploy.bat`.** It finds the newest
+`School-Conference*.zip` in Downloads, opens the database backup in your
+browser and waits, unpacks the update into its own folder, shows the commits
+about to go, and pushes. Your old project folder is not involved — the zip
+carries a complete repository, remote and all — and nothing it does goes near
+the live database on the Railway volume. If the zip is somewhere else, drag it
+onto the .bat instead of double-clicking.
+
+`deploy.ps1` is the same thing for a folder you already have checked out:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\deploy.ps1 -Zip "$HOME\Downloads\School-Conference.zip"
