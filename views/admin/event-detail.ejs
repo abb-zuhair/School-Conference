@@ -95,6 +95,20 @@
   <button class="btn" type="submit">Add schedule</button>
 </form>
 
+<%
+  // Group the event's schedules by department — both slot tools pick from this.
+  var groups = [];
+  schedules.forEach(function (s) {
+    var key = s.department_id || 0;
+    var g = groups.find(function (x) { return x.key === key; });
+    if (!g) {
+      g = { key: key, name: s.department_name || 'No department', id: s.department_id, items: [] };
+      groups.push(g);
+    }
+    g.items.push(s);
+  });
+%>
+
 <form method="post" action="/admin/events/<%= event.id %>/slots/bulk" class="card">
   <h2>Generate slots across schedules</h2>
   <p class="muted small">Roll the same pattern over every schedule you tick. Duplicate times are skipped, so this is safe to run again after adding a teacher.</p>
@@ -128,21 +142,7 @@
     <button class="btn sm ghost" type="button" data-select="none">Clear</button>
   </div>
 
-  <%
-    // Group the event's schedules by department for the picker below.
-    var groups = [];
-    schedules.forEach(function (s) {
-      var key = s.department_id || 0;
-      var g = groups.find(function (x) { return x.key === key; });
-      if (!g) {
-        g = { key: key, name: s.department_name || 'No department', id: s.department_id, items: [] };
-        groups.push(g);
-      }
-      g.items.push(s);
-    });
-  %>
-
-  <div class="dept-picker">
+  <div class="dept-picker" data-picker data-dept-name="slot_department_ids" data-sched-name="schedule_ids">
     <% groups.forEach(function (g) { %>
       <div class="dept-group">
         <label class="check dept-head">
@@ -173,11 +173,140 @@
   <div class="btn-row" style="margin-top:14px"><button class="btn" type="submit">Generate slots</button></div>
 </form>
 
+<div class="card" id="slot-tools">
+  <h2>Change or remove slots</h2>
+  <p class="muted small">
+    The other side of the tool above: pick the same departments, say which dates and times you mean,
+    and either take those slots away or just close them. Leave the dates blank and it covers every
+    slot these schedules hold in this event.
+  </p>
+
+  <% if (preview) { %>
+    <div class="alert <%= preview.counts.booked ? 'warn' : 'info' %>">
+      <strong>
+        <%= preview.counts.slots %> slot<%= preview.counts.slots === 1 ? '' : 's' %>
+        across <%= preview.counts.schedules %> schedule<%= preview.counts.schedules === 1 ? '' : 's' %> match.
+      </strong>
+      <% if (preview.counts.booked) { %>
+        <%= preview.counts.booked %> of them <%= preview.counts.booked === 1 ? 'holds a booking' : 'hold bookings' %>.
+      <% } else { %>
+        None of them is booked.
+      <% } %>
+      <% if (preview.counts.blocked) { %> <%= preview.counts.blocked %> already closed.<% } %>
+      <% if (preview.byDate.length) { %>
+        <div class="table-wrap" style="margin-top:10px">
+          <table class="data">
+            <thead><tr><th>Date</th><th>Slots</th><th>Booked</th><th>Closed</th></tr></thead>
+            <tbody>
+              <% preview.byDate.forEach(function (d) { %>
+                <tr><td><%= h.formatDate(d.date) %></td><td><%= d.slots %></td><td><%= d.booked %></td><td><%= d.blocked %></td></tr>
+              <% }); %>
+            </tbody>
+          </table>
+        </div>
+      <% } %>
+      <div class="muted small" style="margin-top:8px">
+        Your picks are still in the form below — set the action and confirm, or change the filter and check again.
+      </div>
+    </div>
+  <% } %>
+
+  <form method="post" action="/admin/events/<%= event.id %>/slots/edit" id="slot-edit-form">
+    <div class="row">
+      <div class="field">
+        <label for="edit_dates">Dates</label>
+        <input id="edit_dates" name="dates" placeholder="every date"
+               value="<%= preview ? preview.form.dates : '' %>">
+        <div class="hint">YYYY-MM-DD, comma separated. Blank means every date.</div>
+      </div>
+      <div class="field">
+        <label for="edit_from">From</label>
+        <input id="edit_from" name="from_time" type="time" value="<%= preview ? preview.form.from_time : '' %>">
+        <div class="hint">Slots starting at or after this time.</div>
+      </div>
+      <div class="field">
+        <label for="edit_to">Until</label>
+        <input id="edit_to" name="to_time" type="time" value="<%= preview ? preview.form.to_time : '' %>">
+        <div class="hint">Slots starting before this time.</div>
+      </div>
+    </div>
+
+    <h3>Apply to</h3>
+    <div class="btn-row" style="margin-bottom:10px">
+      <button class="btn sm ghost" type="button" data-select="all">Select all departments</button>
+      <button class="btn sm ghost" type="button" data-select="none">Clear</button>
+    </div>
+
+    <div class="dept-picker" data-picker data-dept-name="department_ids" data-sched-name="schedule_ids">
+      <% groups.forEach(function (g) { %>
+        <div class="dept-group">
+          <label class="check dept-head">
+            <input type="checkbox" name="department_ids" value="<%= g.id || '' %>" data-dept="<%= g.key %>"
+                   <%= g.id ? '' : 'disabled title="Schedules with no department must be picked individually"' %>
+                   <%= preview && g.id && preview.form.department_ids.indexOf(g.id) !== -1 ? 'checked' : '' %>>
+            <span>
+              <strong><%= g.name %></strong>
+              <span class="muted small">— <%= g.items.reduce(function (a, i) { return a + i.stats.total_slots; }, 0) %> slots</span>
+            </span>
+          </label>
+          <details>
+            <summary class="muted small">Show schedules</summary>
+            <div class="grid three" style="padding:10px 0 4px">
+              <% g.items.forEach(function (s) { %>
+                <label class="check">
+                  <input type="checkbox" name="schedule_ids" value="<%= s.id %>" data-in-dept="<%= g.key %>"
+                         <%= preview && preview.form.schedule_ids.indexOf(s.id) !== -1 ? 'checked' : '' %>>
+                  <span><%= s.display_name %><br><span class="muted small"><%= s.stats.total_slots %> slots · <%= s.stats.booked %> booked</span></span>
+                </label>
+              <% }); %>
+            </div>
+          </details>
+        </div>
+      <% }); %>
+    </div>
+
+    <% if (!schedules.length) { %><p class="muted small">Create schedules first.</p><% } %>
+
+    <div class="danger-zone" style="margin-top:16px">
+      <h3 style="margin-top:0">What to do with them</h3>
+      <div class="btn-row" style="margin-bottom:10px">
+        <label class="check"><input type="radio" name="action" value="delete" checked> <span><strong>Delete</strong> — remove the times entirely</span></label>
+      </div>
+      <div class="btn-row" style="margin-bottom:10px">
+        <label class="check"><input type="radio" name="action" value="block"> <span><strong>Close</strong> — keep them, but no new sign-ups</span></label>
+      </div>
+      <div class="btn-row" style="margin-bottom:14px">
+        <label class="check"><input type="radio" name="action" value="unblock"> <span><strong>Reopen</strong> — allow sign-ups again</span></label>
+      </div>
+
+      <label class="check"><input type="checkbox" name="cancel_bookings" value="1">
+        <span>Cancel their bookings too — needed before deleting a slot a family already holds</span></label>
+      <label class="check" style="margin-top:6px"><input type="checkbox" name="notify" value="1" checked>
+        <span>Tell those parents their appointment was cancelled</span></label>
+
+      <div class="btn-row" style="margin-top:14px">
+        <button class="btn ghost" type="submit" formaction="/admin/events/<%= event.id %>/slots/preview">Check what this matches</button>
+        <button class="btn danger" type="submit">Apply to these slots</button>
+      </div>
+      <p class="muted small" style="margin-top:8px">
+        Closing a slot someone already holds is skipped rather than done quietly — cancel the booking first.
+      </p>
+    </div>
+  </form>
+</div>
+
 <script>
-  (function () {
-    var depts = document.querySelectorAll('input[name=slot_department_ids]');
+  /* Each picker works only inside its own form, so the two slot tools on this
+     page cannot tick each other's boxes. */
+  document.querySelectorAll('[data-picker]').forEach(function (picker) {
+    var form = picker.closest('form');
+    var deptName = picker.dataset.deptName;
+    var schedName = picker.dataset.schedName;
+    var depts = picker.querySelectorAll('input[name="' + deptName + '"]');
+    var scheds = picker.querySelectorAll('input[name="' + schedName + '"]');
+
     function childrenOf(key) {
-      return document.querySelectorAll('input[name=schedule_ids][data-in-dept="' + key + '"]');
+      return picker.querySelectorAll('input[name="' + schedName + '"][data-in-dept="' + key + '"]');
     }
     depts.forEach(function (d) {
       d.addEventListener('change', function () {
@@ -185,19 +314,35 @@
       });
     });
     // Unticking one teacher releases the whole-department tick, so exclusions stick.
-    document.querySelectorAll('input[name=schedule_ids]').forEach(function (c) {
+    scheds.forEach(function (c) {
       c.addEventListener('change', function () {
         if (c.checked) return;
-        var d = document.querySelector('input[name=slot_department_ids][data-dept="' + c.dataset.inDept + '"]');
+        var d = picker.querySelector('input[name="' + deptName + '"][data-dept="' + c.dataset.inDept + '"]');
         if (d) d.checked = false;
       });
     });
-    document.querySelectorAll('[data-select]').forEach(function (b) {
+    (form ? form.querySelectorAll('[data-select]') : []).forEach(function (b) {
       b.addEventListener('click', function () {
         var on = b.dataset.select === 'all';
-        depts.forEach(function (d) { if (!d.disabled) { d.checked = on; childrenOf(d.dataset.dept).forEach(function (c) { c.checked = on; }); } });
-        if (!on) document.querySelectorAll('input[name=schedule_ids]').forEach(function (c) { c.checked = false; });
+        depts.forEach(function (d) {
+          if (d.disabled) return;
+          d.checked = on;
+          childrenOf(d.dataset.dept).forEach(function (c) { c.checked = on; });
+        });
+        if (!on) scheds.forEach(function (c) { c.checked = false; });
       });
+    });
+  });
+
+  /* Deleting is the default action and the one that cannot be undone. */
+  (function () {
+    var form = document.getElementById('slot-edit-form');
+    if (!form) return;
+    form.addEventListener('submit', function (e) {
+      if (e.submitter && /preview$/.test(e.submitter.getAttribute('formaction') || '')) return;
+      var action = form.querySelector('input[name=action]:checked');
+      if (!action || action.value !== 'delete') return;
+      if (!window.confirm('Delete the matching slots? This cannot be undone.')) e.preventDefault();
     });
   })();
 </script>

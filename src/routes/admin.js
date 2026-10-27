@@ -743,14 +743,24 @@ router.get('/events/:id', loadEvent, (req, res) => {
                 WHERE s.event_id = ? AND sl.blocked = 0) AS capacity`
     )
     .get(req.event.id, req.event.id, req.event.id);
+
+  // A slot preview is read once and then cleared, so a refresh does not leave
+  // stale counts on screen next to a destructive button.
+  const preview = req.session.slotPreview && req.session.slotPreview.eventId === req.event.id
+    ? req.session.slotPreview
+    : null;
+  delete req.session.slotPreview;
+
   res.render('admin/event-detail', {
     title: req.event.name,
     schedules,
     departments,
     teachers,
     stats,
+    preview,
     EVENT_TYPES,
     MODES,
+    SLOT_ACTIONS,
     window: sched.eventWindow(req.event),
   });
 });
@@ -1027,6 +1037,216 @@ router.post('/events/:id/slots/bulk', loadEvent, (req, res) => {
     req.flash('error', err.message);
   }
   res.redirect(`/admin/events/${req.event.id}`);
+});
+
+/* ------------------- bulk edits on existing slots ------------------- *
+ * The mirror image of "generate slots": pick the same departments and
+ * schedules, narrow to the dates and times you mean, then delete those slots
+ * or close and reopen them. Everything destructive goes through
+ * resolveSlotSelection, so the preview the admin reads and the action that
+ * runs are computed by the same code and cannot disagree.
+ * ------------------------------------------------------------------- */
+
+const SLOT_ACTIONS = { delete: 'Delete', block: 'Close', unblock: 'Reopen' };
+
+/**
+ * Turns the form into the exact set of slots it describes.
+ * Returns the slots, the schedules they came from, and how many are booked.
+ */
+function resolveSlotSelection(event, body) {
+  const asList = (v) => (Array.isArray(v) ? v : [v]).map(Number).filter(Boolean);
+
+  // A department tick means "every schedule in it", expanded here rather than in
+  // the browser, so it works with JavaScript off and picks up schedules added since.
+  const deptIds = asList(body.department_ids);
+  const fromDepartments = deptIds.length
+    ? db
+        .prepare(
+          `SELECT id FROM schedules WHERE event_id = ? AND department_id IN (${deptIds.map(() => '?').join(',')})`
+        )
+        .all(event.id, ...deptIds)
+        .map((r) => r.id)
+    : [];
+  const scheduleIds = [...new Set([...asList(body.schedule_ids), ...fromDepartments])];
+
+  const dates = String(body.dates || '')
+    .split(/[\s,]+/)
+    .map((d) => d.trim())
+    .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d));
+  const from = /^\d{2}:\d{2}$/.test(String(body.from_time || '')) ? body.from_time : null;
+  const to = /^\d{2}:\d{2}$/.test(String(body.to_time || '')) ? body.to_time : null;
+
+  const filters = { deptIds, scheduleIds, dates, from, to };
+  if (!scheduleIds.length) return { ...filters, slots: [], booked: 0, byDate: [] };
+
+  const where = [`sl.schedule_id IN (${scheduleIds.map(() => '?').join(',')})`];
+  const params = [...scheduleIds];
+  if (dates.length) {
+    where.push(`sl.slot_date IN (${dates.map(() => '?').join(',')})`);
+    params.push(...dates);
+  }
+  // A slot is in range when it starts at or after `from` and starts before `to`.
+  if (from) { where.push('sl.start_time >= ?'); params.push(from); }
+  if (to) { where.push('sl.start_time < ?'); params.push(to); }
+
+  const slots = db
+    .prepare(
+      `SELECT sl.*,
+              (SELECT COUNT(*) FROM bookings b WHERE b.slot_id = sl.id AND b.status = 'booked') AS booked
+       FROM slots sl
+       WHERE ${where.join(' AND ')}
+       ORDER BY sl.slot_date, sl.start_time`
+    )
+    .all(...params);
+
+  const byDate = [];
+  for (const s of slots) {
+    let d = byDate.find((x) => x.date === s.slot_date);
+    if (!d) { d = { date: s.slot_date, slots: 0, booked: 0, blocked: 0 }; byDate.push(d); }
+    d.slots += 1;
+    d.booked += s.booked;
+    if (s.blocked) d.blocked += 1;
+  }
+
+  return {
+    ...filters,
+    slots,
+    booked: slots.reduce((a, s) => a + s.booked, 0),
+    byDate,
+  };
+}
+
+/** Preview: say exactly what the filter caught before anything happens to it. */
+router.post('/events/:id/slots/preview', loadEvent, (req, res) => {
+  const sel = resolveSlotSelection(req.event, req.body);
+  req.session.slotPreview = {
+    eventId: req.event.id,
+    action: SLOT_ACTIONS[req.body.action] ? req.body.action : 'delete',
+    form: {
+      department_ids: sel.deptIds,
+      schedule_ids: sel.scheduleIds,
+      dates: sel.dates.join(', '),
+      from_time: sel.from || '',
+      to_time: sel.to || '',
+    },
+    counts: {
+      schedules: sel.scheduleIds.length,
+      slots: sel.slots.length,
+      booked: sel.booked,
+      blocked: sel.slots.filter((s) => s.blocked).length,
+    },
+    byDate: sel.byDate,
+  };
+  return req.session.save(() => res.redirect(`/admin/events/${req.event.id}#slot-tools`));
+});
+
+router.post('/events/:id/slots/edit', loadEvent, (req, res) => {
+  const user = auth.currentUser(req);
+  const action = SLOT_ACTIONS[req.body.action] ? req.body.action : null;
+  // No #slot-tools here: what happened is reported in a flash at the top of the
+  // page, and jumping down the page would scroll straight past it.
+  const back = `/admin/events/${req.event.id}`;
+  delete req.session.slotPreview;
+
+  if (!action) {
+    req.flash('error', 'Choose what to do with the slots.');
+    return res.redirect(back);
+  }
+
+  const sel = resolveSlotSelection(req.event, req.body);
+  if (!sel.scheduleIds.length) {
+    req.flash('error', 'Tick at least one department or schedule first.');
+    return res.redirect(back);
+  }
+  if (!sel.slots.length) {
+    req.flash('error', 'Nothing matched — check the dates and times, or leave them blank for every slot.');
+    return res.redirect(back);
+  }
+
+  const ids = sel.slots.map((s) => s.id);
+
+  // An evening across a big department runs to thousands of slots, well past
+  // SQLite's limit on bound variables, so every id list is spent in batches.
+  const inBatches = (list, fn) => {
+    let total = 0;
+    for (let i = 0; i < list.length; i += 400) total += fn(list.slice(i, i + 400));
+    return total;
+  };
+  const runOnSlots = (list, sql) =>
+    inBatches(list, (chunk) =>
+      db.prepare(sql.replace('@ids', chunk.map(() => '?').join(','))).run(...chunk).changes
+    );
+
+  if (action === 'unblock') {
+    const changed = runOnSlots(ids, 'UPDATE slots SET blocked = 0 WHERE id IN (@ids)');
+    auth.audit(user.id, 'slots_bulk_unblock', { eventId: req.event.id, slots: changed });
+    req.flash('success', `${changed} slot(s) reopened — parents can book them again.`);
+    return res.redirect(back);
+  }
+
+  if (action === 'block') {
+    // Closing a slot someone already holds would leave the family with an
+    // appointment nobody can see. Those are skipped and reported.
+    const free = sel.slots.filter((s) => !s.booked).map((s) => s.id);
+    const changed = runOnSlots(free, 'UPDATE slots SET blocked = 1 WHERE id IN (@ids)');
+    auth.audit(user.id, 'slots_bulk_block', { eventId: req.event.id, slots: changed });
+    const held = sel.slots.length - free.length;
+    req.flash(
+      'success',
+      `${changed} slot(s) closed.` +
+        (held ? ` ${held} already had a booking and were left open — cancel those first if you need them closed.` : '')
+    );
+    return res.redirect(back);
+  }
+
+  // delete
+  if (sel.booked > 0 && !asBool(req.body.cancel_bookings)) {
+    req.flash(
+      'error',
+      `Those slots hold ${sel.booked} live booking(s). Tick “cancel their bookings too” to delete them — the parents will be told.`
+    );
+    return res.redirect(back);
+  }
+
+  let cancelled = 0;
+  if (sel.booked > 0) {
+    const notify = asBool(req.body.notify);
+    const held = [];
+    inBatches(ids, (chunk) => {
+      held.push(
+        ...db
+          .prepare(
+            `SELECT id FROM bookings WHERE status = 'booked' AND slot_id IN (${chunk.map(() => '?').join(',')})`
+          )
+          .all(...chunk)
+      );
+      return 0;
+    });
+    for (const row of held) {
+      sched.cancelBooking(row.id, 'admin');
+      if (notify) {
+        const updated = sched.bookingById(row.id);
+        if (updated) notifyAsync(updated, 'cancellation');
+      }
+    }
+    cancelled = held.length;
+  }
+
+  const removed = runOnSlots(ids, 'DELETE FROM slots WHERE id IN (@ids)');
+  auth.audit(user.id, 'slots_bulk_delete', {
+    eventId: req.event.id,
+    departments: sel.deptIds.length,
+    schedules: sel.scheduleIds.length,
+    slots: removed,
+    cancelled,
+  });
+  req.flash(
+    'success',
+    `${removed} slot(s) deleted across ${sel.scheduleIds.length} schedule(s)` +
+      (cancelled ? `, ${cancelled} booking(s) cancelled${asBool(req.body.notify) ? ' and the parents notified' : ''}` : '') +
+      '.'
+  );
+  return res.redirect(back);
 });
 
 /* ---------------------------- reports ------------------------------ */

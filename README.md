@@ -42,12 +42,13 @@ the admin exports, and access control.
 ```bash
 npm run features     # CSV upload, compare toggle, department slot generation, back-ups
 npm run department   # department-head permissions, both sides, and the teacher search
+npm run slots        # bulk slot delete/close/reopen, and the guards on them
 npm run sso          # Entra sign-in against a mock login host — starts its own instance
 npm run messaging    # WhatsApp templates against a mock WATI host
 ```
 
-`npm run smoke`, `features` and `department` each want a freshly seeded database, so
-reset and reseed between them.
+`npm run smoke`, `features`, `department` and `slots` each want a freshly seeded
+database, so reset and reseed between them.
 
 `npm run sso` needs no Microsoft credentials: it runs a fake authority on port 3101 and
 walks the real redirect flow, including the rejections that matter — unknown account,
@@ -109,6 +110,10 @@ What a head cannot do is the point of the role. No other department, no other ca
 - Events of four types — conference, uniform, registration, other — each with its own instructions, open/close window and rules.
 - **Create schedules from classes**: tick departments, get one slot sheet per class in one click.
 - **Bulk slot generation** — tick whole **departments** and every teacher in them gets the same pattern, or open a department and pick individual schedules. Safe to re-run after adding a teacher: duplicate times are skipped, and a department tick picks up schedules created since.
+- **Bulk slot changes** (*Change or remove slots*, on the same page) — the other direction. Tick the same departments, optionally narrow to certain dates and a start-time window, then **delete** those slots, **close** them to new sign-ups, or **reopen** them. Leave the dates blank and it covers every slot those schedules hold in the event.
+  - **Check what this matches** first: it reports how many slots and schedules the filter caught, how many hold bookings, and a line per date — read once, then cleared, so stale counts never sit beside a live delete button.
+  - Deleting slots a family already holds needs an explicit tick and offers to notify the parents, like every other delete in the console. Closing a booked slot is skipped and reported rather than done quietly, because a closed slot the parent still holds is an appointment nobody can see.
+  - Admin and campus admin only — a department head manages slots one sheet at a time. Campus scoping is inherited from the event, so a campus admin can only ever reach their own.
 - Reports: fill rate per teacher, all bookings, bookings CSV, open-slots CSV, resend a confirmation.
 - **Deleting.** A schedule with no bookings deletes outright; one with live bookings needs an explicit tick to cancel them, and parents are notified by default. Deleting a whole **event** is admin-only and behind a confirmation page that shows how many schedules, slots and bookings go with it and makes you type the event's name. Closing or archiving is offered first — that stops new sign-ups while keeping the history and parents' existing links working.
 - Message log showing every email and WhatsApp attempt with its result.
