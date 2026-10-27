@@ -245,6 +245,22 @@ Kuwaiti numbers typed as 8 digits get `DEFAULT_COUNTRY_CODE` (965) prepended aut
 
 ## Deploying to Railway
 
+**The short version, once it is set up:** from the project folder on Windows,
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\deploy.ps1 -Zip "$HOME\Downloads\School-Conference.zip"
+```
+
+`deploy.ps1` refuses to run over uncommitted work, opens the database backup in
+your browser, copies `.env` and `data/` aside, unpacks the update, shows which
+commits are about to go, and pushes. Drop the `-Zip` argument when the folder
+already holds the new commits and they only need sending. It stops at the first
+problem and says what it found; it never touches the live database, which lives
+on the Railway volume and is not part of a deploy.
+
+The rest of this section is the first-time setup.
+
+
 1. Push this repo to GitHub, then **New Project → Deploy from GitHub repo**.
 2. Add a **Volume** mounted at `/data`. **This is what keeps your data across deploys.** Without it the database lives inside the app folder, which the platform rebuilds on every deploy — campuses, teachers, bookings and your admin account all vanish. The app prints a warning at boot and shows a red banner on the admin dashboard whenever it detects this, so you will not find out the hard way.
 3. Set the variables:
