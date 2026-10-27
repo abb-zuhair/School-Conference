@@ -67,6 +67,7 @@ const config = {
     templates: {
       confirmation: process.env.WATI_TEMPLATE_CONFIRM || '',
       cancellation: process.env.WATI_TEMPLATE_CANCEL || '',
+      reschedule: process.env.WATI_TEMPLATE_RESCHEDULE || '',
       reminder: process.env.WATI_TEMPLATE_REMINDER || '',
     },
     countryCode: (process.env.DEFAULT_COUNTRY_CODE || '965').replace(/\D/g, ''),

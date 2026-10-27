@@ -205,6 +205,17 @@
           </table>
         </div>
       <% } %>
+      <% if (preview.move) { %>
+        <div style="margin-top:10px">
+          <% if (preview.move.problem) { %>
+            <strong>This move cannot run:</strong> <%= preview.move.problem %>
+          <% } else if (preview.move.example) { %>
+            <strong>They would move</strong> — the first one goes from
+            <span class="mono"><%= preview.move.example.from %></span> to
+            <span class="mono"><%= preview.move.example.to %></span>, and the rest shift the same way.
+          <% } %>
+        </div>
+      <% } %>
       <div class="muted small" style="margin-top:8px">
         Your picks are still in the form below — set the action and confirm, or change the filter and check again.
       </div>
@@ -275,14 +286,33 @@
       <div class="btn-row" style="margin-bottom:10px">
         <label class="check"><input type="radio" name="action" value="block"> <span><strong>Close</strong> — keep them, but no new sign-ups</span></label>
       </div>
-      <div class="btn-row" style="margin-bottom:14px">
+      <div class="btn-row" style="margin-bottom:10px">
         <label class="check"><input type="radio" name="action" value="unblock"> <span><strong>Reopen</strong> — allow sign-ups again</span></label>
+      </div>
+      <div class="btn-row" style="margin-bottom:6px">
+        <label class="check"><input type="radio" name="action" value="move"
+               <%= preview && preview.action === 'move' ? 'checked' : '' %>>
+          <span><strong>Move</strong> — same slots, new date or time</span></label>
+      </div>
+
+      <div class="row" style="margin:0 0 14px 26px">
+        <div class="field">
+          <label for="new_date">Move to this date</label>
+          <input id="new_date" name="new_date" placeholder="YYYY-MM-DD" value="<%= preview ? preview.form.new_date : '' %>">
+          <div class="hint">Blank keeps each slot on its own day.</div>
+        </div>
+        <div class="field">
+          <label for="shift_minutes">Shift by (minutes)</label>
+          <input id="shift_minutes" name="shift_minutes" type="number" step="5" placeholder="0"
+                 value="<%= preview ? preview.form.shift_minutes : '' %>">
+          <div class="hint">30 moves everything half an hour later, −30 half an hour earlier.</div>
+        </div>
       </div>
 
       <label class="check"><input type="checkbox" name="cancel_bookings" value="1">
         <span>Cancel their bookings too — needed before deleting a slot a family already holds</span></label>
       <label class="check" style="margin-top:6px"><input type="checkbox" name="notify" value="1" checked>
-        <span>Tell those parents their appointment was cancelled</span></label>
+        <span>Tell the parents — that their appointment was cancelled, or, for a move, its new time</span></label>
 
       <div class="btn-row" style="margin-top:14px">
         <button class="btn ghost" type="submit" formaction="/admin/events/<%= event.id %>/slots/preview">Check what this matches</button>
@@ -290,6 +320,7 @@
       </div>
       <p class="muted small" style="margin-top:8px">
         Closing a slot someone already holds is skipped rather than done quietly — cancel the booking first.
+        A move takes the bookings with it: nobody has to rebook, and each parent is emailed the new time.
       </p>
     </div>
   </form>
@@ -341,8 +372,12 @@
     form.addEventListener('submit', function (e) {
       if (e.submitter && /preview$/.test(e.submitter.getAttribute('formaction') || '')) return;
       var action = form.querySelector('input[name=action]:checked');
-      if (!action || action.value !== 'delete') return;
-      if (!window.confirm('Delete the matching slots? This cannot be undone.')) e.preventDefault();
+      if (!action) return;
+      if (action.value === 'delete') {
+        if (!window.confirm('Delete the matching slots? This cannot be undone.')) e.preventDefault();
+      } else if (action.value === 'move') {
+        if (!window.confirm('Move the matching slots? Any bookings move with them and those parents will be emailed.')) e.preventDefault();
+      }
     });
   })();
 </script>

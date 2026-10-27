@@ -158,7 +158,7 @@ CREATE TABLE IF NOT EXISTS notifications (
   id          INTEGER PRIMARY KEY,
   booking_id  INTEGER REFERENCES bookings(id) ON DELETE CASCADE,
   channel     TEXT NOT NULL,   -- email | whatsapp
-  kind        TEXT NOT NULL,   -- confirmation | cancellation | reminder
+  kind        TEXT NOT NULL,   -- confirmation | summary | cancellation | reschedule | reminder
   recipient   TEXT,
   status      TEXT NOT NULL,   -- sent | skipped | failed
   detail      TEXT,

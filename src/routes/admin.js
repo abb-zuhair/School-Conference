@@ -18,6 +18,9 @@ const {
   toCsv,
   formatDate,
   formatTime,
+  timeToMinutes,
+  minutesToTime,
+  nowLocal,
   asBool,
   EVENT_TYPES,
   MODES,
@@ -1047,7 +1050,84 @@ router.post('/events/:id/slots/bulk', loadEvent, (req, res) => {
  * runs are computed by the same code and cannot disagree.
  * ------------------------------------------------------------------- */
 
-const SLOT_ACTIONS = { delete: 'Delete', block: 'Close', unblock: 'Reopen' };
+const SLOT_ACTIONS = { delete: 'Delete', block: 'Close', unblock: 'Reopen', move: 'Move' };
+
+/**
+ * Works out where a set of slots would land, and whether they can.
+ *
+ * Two slots may never share a date and time on one schedule — the database
+ * enforces it — so the check has to distinguish a slot that is in the way from
+ * one that is itself moving out of the way. Shifting an evening by ten minutes
+ * puts every slot on its neighbour's old time, and that is fine precisely
+ * because the neighbour leaves too.
+ *
+ * Returns { targets, problems }. Any problem means nothing moves.
+ */
+function planSlotMove(slots, { newDate, shift }) {
+  const problems = [];
+  const targets = new Map(); // slot id -> { slot_date, start_time, end_time }
+
+  for (const s of slots) {
+    const start = timeToMinutes(s.start_time) + shift;
+    const end = timeToMinutes(s.end_time) + shift;
+    if (start < 0 || end > 24 * 60) {
+      problems.push('That shift would push some times past midnight. Move the slots to another date instead.');
+      break;
+    }
+    targets.set(s.id, {
+      slot_date: newDate || s.slot_date,
+      start_time: minutesToTime(start),
+      end_time: minutesToTime(end),
+    });
+  }
+  if (problems.length) return { targets, problems };
+
+  // Two of the moving slots landing on the same time — two evenings collapsed
+  // onto one date, say.
+  const seen = new Map();
+  for (const s of slots) {
+    const t = targets.get(s.id);
+    const key = `${s.schedule_id}|${t.slot_date}|${t.start_time}`;
+    if (seen.has(key)) {
+      problems.push(
+        `Two of the slots would land on ${formatDate(t.slot_date)} at ${formatTime(t.start_time)} for the same teacher. ` +
+          'Narrow the dates, or move one evening at a time.'
+      );
+      break;
+    }
+    seen.set(key, s.id);
+  }
+  if (problems.length) return { targets, problems };
+
+  // A slot that stays put and is already sitting on a target time.
+  const moving = new Set(slots.map((s) => s.id));
+  const scheduleIds = [...new Set(slots.map((s) => s.schedule_id))];
+  const staying = [];
+  for (let i = 0; i < scheduleIds.length; i += 400) {
+    const chunk = scheduleIds.slice(i, i + 400);
+    staying.push(
+      ...db
+        .prepare(
+          `SELECT id, schedule_id, slot_date, start_time FROM slots
+           WHERE schedule_id IN (${chunk.map(() => '?').join(',')})`
+        )
+        .all(...chunk)
+    );
+  }
+  for (const s of staying) {
+    if (moving.has(s.id)) continue;
+    const key = `${s.schedule_id}|${s.slot_date}|${s.start_time}`;
+    if (seen.has(key)) {
+      problems.push(
+        `There is already a slot at ${formatDate(s.slot_date)} ${formatTime(s.start_time)} that is not part of this move. ` +
+          'Delete or move that one first.'
+      );
+      break;
+    }
+  }
+
+  return { targets, problems };
+}
 
 /**
  * Turns the form into the exact set of slots it describes.
@@ -1119,15 +1199,40 @@ function resolveSlotSelection(event, body) {
 /** Preview: say exactly what the filter caught before anything happens to it. */
 router.post('/events/:id/slots/preview', loadEvent, (req, res) => {
   const sel = resolveSlotSelection(req.event, req.body);
+  const action = SLOT_ACTIONS[req.body.action] ? req.body.action : 'delete';
+  const newDate = /^\d{4}-\d{2}-\d{2}$/.test(String(req.body.new_date || '')) ? req.body.new_date : null;
+  const shift = Number.isFinite(Number(req.body.shift_minutes)) ? Math.trunc(Number(req.body.shift_minutes)) : 0;
+
+  // For a move, say where they would land and whether anything is in the way,
+  // so the problem turns up before the button rather than after it.
+  let move = null;
+  if (action === 'move' && sel.slots.length && (newDate || shift)) {
+    const plan = planSlotMove(sel.slots, { newDate, shift });
+    const first = sel.slots[0];
+    const target = plan.targets.get(first.id);
+    move = {
+      problem: plan.problems[0] || null,
+      example: target
+        ? {
+            from: `${formatDate(first.slot_date)} ${formatTime(first.start_time)}`,
+            to: `${formatDate(target.slot_date)} ${formatTime(target.start_time)}`,
+          }
+        : null,
+    };
+  }
+
   req.session.slotPreview = {
     eventId: req.event.id,
-    action: SLOT_ACTIONS[req.body.action] ? req.body.action : 'delete',
+    action,
+    move,
     form: {
       department_ids: sel.deptIds,
       schedule_ids: sel.scheduleIds,
       dates: sel.dates.join(', '),
       from_time: sel.from || '',
       to_time: sel.to || '',
+      new_date: newDate || '',
+      shift_minutes: shift || '',
     },
     counts: {
       schedules: sel.scheduleIds.length,
@@ -1195,6 +1300,96 @@ router.post('/events/:id/slots/edit', loadEvent, (req, res) => {
       'success',
       `${changed} slot(s) closed.` +
         (held ? ` ${held} already had a booking and were left open — cancel those first if you need them closed.` : '')
+    );
+    return res.redirect(back);
+  }
+
+  if (action === 'move') {
+    const newDate = /^\d{4}-\d{2}-\d{2}$/.test(String(req.body.new_date || '')) ? req.body.new_date : null;
+    const shift = Number.isFinite(Number(req.body.shift_minutes)) ? Math.trunc(Number(req.body.shift_minutes)) : 0;
+
+    if (!newDate && !shift) {
+      req.flash('error', 'Give a new date, a number of minutes to shift by, or both.');
+      return res.redirect(back);
+    }
+    if (newDate && newDate < nowLocal().toISODate()) {
+      req.flash('error', `${formatDate(newDate)} has already passed — parents could not keep an appointment there.`);
+      return res.redirect(back);
+    }
+
+    const { targets, problems } = planSlotMove(sel.slots, { newDate, shift });
+    if (problems.length) {
+      req.flash('error', problems[0]);
+      return res.redirect(back);
+    }
+
+    // Remember where each booked slot was, so the parent can be told what changed.
+    const affected = [];
+    inBatches(ids, (chunk) => {
+      affected.push(
+        ...db
+          .prepare(
+            `SELECT b.id, sl.slot_date AS was_date, sl.start_time AS was_start
+             FROM bookings b JOIN slots sl ON sl.id = b.slot_id
+             WHERE b.status = 'booked' AND b.slot_id IN (${chunk.map(() => '?').join(',')})`
+          )
+          .all(...chunk)
+      );
+      return 0;
+    });
+
+    /*
+     * Done in one transaction, and in two passes. A slot taking its
+     * neighbour's time is legal only once the neighbour has gone, and the
+     * database checks row by row, so everything is parked on a throwaway key
+     * first. Either the whole evening moves or none of it does.
+     */
+    const park = db.prepare("UPDATE slots SET slot_date = '1970-01-01', start_time = CAST(id AS TEXT) WHERE id = ?");
+    const land = db.prepare('UPDATE slots SET slot_date = ?, start_time = ?, end_time = ? WHERE id = ?');
+    const move = db.transaction((rows) => {
+      for (const s of rows) park.run(s.id);
+      for (const s of rows) {
+        const t = targets.get(s.id);
+        land.run(t.slot_date, t.start_time, t.end_time, s.id);
+      }
+    });
+
+    try {
+      move(sel.slots);
+    } catch (err) {
+      auth.audit(user.id, 'slots_bulk_move_failed', { eventId: req.event.id, error: err.message });
+      req.flash('error', `The move was rolled back — nothing changed. (${err.message})`);
+      return res.redirect(back);
+    }
+
+    const notify = asBool(req.body.notify);
+    if (notify) {
+      for (const row of affected) {
+        const booking = sched.bookingById(row.id);
+        if (booking) notifyAsync({ ...booking, was_date: row.was_date, was_start: row.was_start }, 'reschedule');
+      }
+    }
+
+    auth.audit(user.id, 'slots_bulk_move', {
+      eventId: req.event.id,
+      slots: sel.slots.length,
+      newDate,
+      shift,
+      bookings: affected.length,
+    });
+
+    const how = [
+      newDate ? `to ${formatDate(newDate)}` : null,
+      shift ? `${shift > 0 ? '+' : ''}${shift} minutes` : null,
+    ]
+      .filter(Boolean)
+      .join(', ');
+    req.flash(
+      'success',
+      `${sel.slots.length} slot(s) moved ${how}.` +
+        (affected.length
+          ? ` ${affected.length} booking(s) moved with them${notify ? ' and those parents have been told' : ' — the parents were NOT notified'}.`
+          : '')
     );
     return res.redirect(back);
   }
@@ -1364,6 +1559,7 @@ const WATI_KEYS = {
   template_summary: 'wati.template.summary',
   template_confirmation: 'wati.template.confirmation',
   template_cancellation: 'wati.template.cancellation',
+  template_reschedule: 'wati.template.reschedule',
   template_reminder: 'wati.template.reminder',
 };
 
@@ -1382,6 +1578,7 @@ function messagingView(req, extra = {}) {
       template_summary: settings.get('wati.template.summary', ''),
       template_confirmation: settings.get('wati.template.confirmation', ''),
       template_cancellation: settings.get('wati.template.cancellation', ''),
+      template_reschedule: settings.get('wati.template.reschedule', ''),
       template_reminder: settings.get('wati.template.reminder', ''),
     },
     baseUrl: config.baseUrl,
@@ -1401,6 +1598,7 @@ router.post('/messaging', auth.requireRole('admin'), (req, res) => {
     [WATI_KEYS.template_summary]: String(req.body.template_summary || '').trim(),
     [WATI_KEYS.template_confirmation]: String(req.body.template_confirmation || '').trim(),
     [WATI_KEYS.template_cancellation]: String(req.body.template_cancellation || '').trim(),
+    [WATI_KEYS.template_reschedule]: String(req.body.template_reschedule || '').trim(),
     [WATI_KEYS.template_reminder]: String(req.body.template_reminder || '').trim(),
   };
   // An empty token box means "leave the stored one alone", so a careless save

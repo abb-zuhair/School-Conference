@@ -22,6 +22,7 @@ function current() {
       confirmation: settings.get('wati.template.confirmation', config.wati.templates.confirmation),
       summary: settings.get('wati.template.summary', ''),
       cancellation: settings.get('wati.template.cancellation', config.wati.templates.cancellation),
+      reschedule: settings.get('wati.template.reschedule', config.wati.templates.reschedule || ''),
       reminder: settings.get('wati.template.reminder', config.wati.templates.reminder),
     },
     enabled: Boolean(endpoint && token),

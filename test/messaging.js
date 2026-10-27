@@ -163,14 +163,20 @@ const settle = () => new Promise((r) => setTimeout(r, 600));
   check('the four-variable limit is explained', r.text.includes('same four variables'));
   check('the no-trailing-variable rule is explained', r.text.includes('ends') && r.text.includes('with a variable'));
 
+  check('the moved-appointment template is offered', r.text.includes('name="template_reschedule"'));
+  check('and its wording is given', r.text.includes('has been moved to a new time'));
+
   r = await req(a, 'POST', '/admin/messaging', {
     endpoint: `http://localhost:${WATI_PORT}/`,
     token: 'test-token-abcd',
     country_code: '965',
     template_summary: 'appointment_summary',
     template_cancellation: 'appointment_cancelled',
+    template_reschedule: 'appointment_moved',
   });
   check('settings save', r.status === 302);
+  settings.refresh();
+  check('the moved template is stored', settings.get('wati.template.reschedule', '') === 'appointment_moved');
 
   r = await follow(a, '/admin/messaging');
   check('page now reports connected', r.text.includes('Connected'));

@@ -93,6 +93,14 @@
       <input id="template_reminder" name="template_reminder" value="<%= fromForm.template_reminder %>" placeholder="appointment_reminder">
     </div>
   </div>
+  <div class="row">
+    <div class="field">
+      <label for="template_reschedule">Moved appointment</label>
+      <input id="template_reschedule" name="template_reschedule" value="<%= fromForm.template_reschedule %>" placeholder="appointment_moved">
+      <div class="hint">Sent when you move slots to another date or time. Leave blank and the parent gets the email only.</div>
+    </div>
+    <div class="field"></div>
+  </div>
 
   <div class="btn-row"><button class="btn" type="submit">Save settings</button></div>
 </form>
@@ -123,7 +131,7 @@
   </p>
 
   <div class="alert info">
-    <strong>All four templates use the same four variables, in this order.</strong>
+    <strong>Every template uses the same four variables, in this order.</strong>
     WATI caps a template at four, and it rejects a body that <em>ends</em> with a variable — so every
     suggested wording below closes with a plain line of text. Keep that last line.
   </div>
@@ -169,7 +177,15 @@ Thank you — American Creativity Academy</pre>
 To book another time, open {{4}}
 Thank you — American Creativity Academy</pre>
 
-  <h3 style="margin-top:18px">4 · Reminder</h3>
+  <h3 style="margin-top:18px">4 · Moved appointment</h3>
+  <pre class="mono tmpl">Hello {{1}}, your appointment for {{2}} has been moved to a new time.
+
+{{3}}
+
+You do not need to book again. To view or cancel, open {{4}}
+Thank you — American Creativity Academy</pre>
+
+  <h3 style="margin-top:18px">5 · Reminder</h3>
   <pre class="mono tmpl">Hello {{1}}, a reminder of your appointment for {{2}}.
 
 {{3}}

@@ -96,6 +96,30 @@ function cancellationEmail(b) {
   };
 }
 
+/**
+ * The appointment itself did not change — the school moved it. The old time is
+ * spelled out above the new one so a parent who has it written down can see at
+ * a glance what to cross out.
+ */
+function rescheduledEmail(b) {
+  const was = b.was_date && b.was_start
+    ? `<p style="margin:0 0 14px;font-size:14px;color:#6b7c8c">
+         Previously <span style="text-decoration:line-through">${escapeHtml(formatDate(b.was_date))} at ${escapeHtml(formatTime(b.was_start))}</span>
+       </p>`
+    : '';
+  return {
+    subject: `New time: ${b.event_name} — ${formatDate(b.slot_date)} at ${formatTime(b.start_time)}`,
+    html: shell(
+      'Your appointment has moved',
+      `<p style="margin:0 0 16px;font-size:15px">Dear ${escapeHtml(b.parent_name)}, the school has moved your appointment. You do not need to book again — the new time is below.</p>
+       ${was}
+       ${detailTable(b)}
+       <p style="margin:20px 0 0"><a href="${manageUrl(b)}" style="display:inline-block;background:#0b3d5c;color:#fff;text-decoration:none;padding:11px 20px;border-radius:8px;font-size:14px">View or cancel this appointment</a></p>
+       <p style="margin:14px 0 0;font-size:12px;color:#6b7c8c">Your original link still works and now shows the new time. If it no longer suits you, you can cancel from there and pick another.</p>`
+    ),
+  };
+}
+
 function reminderEmail(b) {
   return {
     subject: `Reminder: ${b.event_name} tomorrow at ${formatTime(b.start_time)}`,
@@ -111,6 +135,7 @@ function reminderEmail(b) {
 const EMAIL_BUILDERS = {
   confirmation: confirmationEmail,
   cancellation: cancellationEmail,
+  reschedule: rescheduledEmail,
   reminder: reminderEmail,
 };
 

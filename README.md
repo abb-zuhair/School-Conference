@@ -110,9 +110,11 @@ What a head cannot do is the point of the role. No other department, no other ca
 - Events of four types — conference, uniform, registration, other — each with its own instructions, open/close window and rules.
 - **Create schedules from classes**: tick departments, get one slot sheet per class in one click.
 - **Bulk slot generation** — tick whole **departments** and every teacher in them gets the same pattern, or open a department and pick individual schedules. Safe to re-run after adding a teacher: duplicate times are skipped, and a department tick picks up schedules created since.
-- **Bulk slot changes** (*Change or remove slots*, on the same page) — the other direction. Tick the same departments, optionally narrow to certain dates and a start-time window, then **delete** those slots, **close** them to new sign-ups, or **reopen** them. Leave the dates blank and it covers every slot those schedules hold in the event.
+- **Bulk slot changes** (*Change or remove slots*, on the same page) — the other direction. Tick the same departments, optionally narrow to certain dates and a start-time window, then **delete** those slots, **close** them to new sign-ups, **reopen** them, or **move** them to another date or time. Leave the dates blank and it covers every slot those schedules hold in the event.
   - **Check what this matches** first: it reports how many slots and schedules the filter caught, how many hold bookings, and a line per date — read once, then cleared, so stale counts never sit beside a live delete button.
   - Deleting slots a family already holds needs an explicit tick and offers to notify the parents, like every other delete in the console. Closing a booked slot is skipped and reported rather than done quietly, because a closed slot the parent still holds is an appointment nobody can see.
+  - **Moving** takes a new date, a shift in minutes, or both — "Tuesday is now Thursday", "the whole evening starts half an hour later". The bookings go with their slots: nobody has to rebook, each parent's existing link keeps working and shows the new time, and they are emailed (and sent a WhatsApp, if you add the *Moved appointment* template) showing the old time struck through above the new one.
+  - A move either happens completely or not at all. No two slots may share a time on one teacher's sheet, so the move is planned first and refused outright — before anything changes — if two slots would land on the same time, if something that is staying put is already there, if the shift would run past midnight, or if the date has already passed. Shifting a whole evening is fine even though every slot lands on its neighbour's old time, because the neighbour moves too; the update runs in one transaction that parks the rows on a throwaway key before setting the real one, so the database never sees a half-moved evening.
   - Admin and campus admin only — a department head manages slots one sheet at a time. Campus scoping is inherited from the event, so a campus admin can only ever reach their own.
 - Reports: fill rate per teacher, all bookings, bookings CSV, open-slots CSV, resend a confirmation.
 - **Deleting.** A schedule with no bookings deletes outright; one with live bookings needs an explicit tick to cancel them, and parents are notified by default. Deleting a whole **event** is admin-only and behind a confirmation page that shows how many schedules, slots and bookings go with it and makes you type the event's name. Closing or archiving is offered first — that stops new sign-ups while keeping the history and parents' existing links working.
@@ -220,21 +222,18 @@ appointment either way, since each carries its own cancel link.
 
 Set `WATI_API_ENDPOINT` (your `https://live-server-XXXX.wati.io` URL) and `WATI_ACCESS_TOKEN`.
 
-Outside the 24-hour service window WATI only sends **approved templates**, so submit three templates and put their names in `WATI_TEMPLATE_CONFIRM`, `WATI_TEMPLATE_CANCEL`, `WATI_TEMPLATE_REMINDER`. The app always passes the same seven positional parameters:
+Outside the 24-hour service window WATI only sends **approved templates**. The app uses up to five, and **the names go in the admin console** at *Admin → WhatsApp*, which takes effect immediately with no redeploy; `WATI_TEMPLATE_CONFIRM`, `WATI_TEMPLATE_CANCEL`, `WATI_TEMPLATE_RESCHEDULE` and `WATI_TEMPLATE_REMINDER` remain as fallbacks for anything the console leaves blank.
+
+Every template takes **the same four parameters**, because WATI commonly caps a template at four and rejects a body that *ends* with a variable:
 
 | Parameter | Value |
 |---|---|
 | `{{1}}` | Parent name |
-| `{{2}}` | Event name |
-| `{{3}}` | Who the appointment is with |
-| `{{4}}` | Date |
-| `{{5}}` | Time |
-| `{{6}}` | Location or meeting link |
-| `{{7}}` | Manage-booking URL |
+| `{{2}}` | Event name, with the campus |
+| `{{3}}` | The appointment(s), on one line |
+| `{{4}}` | Link to view or cancel |
 
-Suggested body for the confirmation template:
-
-> Hello {{1}}, your booking for *{{2}}* with {{3}} is confirmed for {{4}} at {{5}}. Location: {{6}}. To view or cancel: {{7}}
+The five kinds are **summary** (one message covering a whole booking), **confirmation** (the fallback when no summary template is set), **cancellation**, **moved appointment**, and **reminder**. Leave a name blank and that message type is skipped and logged as `skipped` — the email still goes. The admin page prints a ready-to-paste body for each one, every one closing with a plain line of text so the body never ends on a variable.
 
 Kuwaiti numbers typed as 8 digits get `DEFAULT_COUNTRY_CODE` (965) prepended automatically.
 

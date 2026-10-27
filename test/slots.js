@@ -195,6 +195,131 @@ async function req(j, method, p, body) {
   );
   check('the other department survived it all', countIn(other.id) > 0);
 
+
+  /* ---------------- moving slots to another date and time ---------------- */
+  // A fresh department to work on, untouched by the deletes above.
+  const arabic = db.prepare("SELECT * FROM departments WHERE name = 'Elementary — Arabic & Islamic'").get();
+  const aSched = db
+    .prepare('SELECT id FROM schedules WHERE event_id = ? AND department_id = ? ORDER BY id LIMIT 1')
+    .get(event.id, arabic.id);
+  const days = db
+    .prepare('SELECT slot_date FROM slots WHERE schedule_id = ? GROUP BY slot_date ORDER BY slot_date')
+    .all(aSched.id)
+    .map((r) => r.slot_date);
+  check('the department has two evenings', days.length >= 2, `${days.length}`);
+
+  const firstDay = days[0];
+  const dayCount = db
+    .prepare('SELECT COUNT(*) AS n FROM slots sl JOIN schedules s ON s.id = sl.schedule_id WHERE s.department_id = ? AND sl.slot_date = ?')
+    .get(arabic.id, firstDay).n;
+
+  // A booking that must travel with its slot.
+  const travelling = db
+    .prepare('SELECT * FROM slots WHERE schedule_id = ? AND slot_date = ? AND blocked = 0 ORDER BY start_time LIMIT 1')
+    .get(aSched.id, firstDay);
+  const travelBooking = db
+    .prepare(
+      `INSERT INTO bookings (slot_id, event_id, schedule_id, parent_name, parent_email, token, status)
+       VALUES (?, ?, ?, 'Moving Parent', 'moving@example.com', ?, 'booked')`
+    )
+    .run(travelling.id, event.id, aSched.id, `move-${Date.now()}`);
+
+  const moveTo = '2099-06-01';
+  r = await edit({ action: 'move', department_ids: [arabic.id], dates: firstDay, new_date: moveTo, notify: '' });
+  check('the move succeeds', r.status === 302);
+  check(
+    'every slot landed on the new date',
+    db.prepare('SELECT COUNT(*) AS n FROM slots sl JOIN schedules s ON s.id = sl.schedule_id WHERE s.department_id = ? AND sl.slot_date = ?')
+      .get(arabic.id, moveTo).n === dayCount
+  );
+  check(
+    'the old date is empty',
+    db.prepare('SELECT COUNT(*) AS n FROM slots sl JOIN schedules s ON s.id = sl.schedule_id WHERE s.department_id = ? AND sl.slot_date = ?')
+      .get(arabic.id, firstDay).n === 0
+  );
+  check(
+    'the second evening did not move',
+    db.prepare('SELECT COUNT(*) AS n FROM slots sl JOIN schedules s ON s.id = sl.schedule_id WHERE s.department_id = ? AND sl.slot_date = ?')
+      .get(arabic.id, days[1]).n > 0
+  );
+
+  const travelled = db.prepare('SELECT * FROM slots WHERE id = ?').get(travelling.id);
+  check('the booked slot kept its identity', Boolean(travelled));
+  check('and moved with the rest', travelled.slot_date === moveTo);
+  check('its time is unchanged', travelled.start_time === travelling.start_time);
+  const stillBooked = db.prepare('SELECT status FROM bookings WHERE id = ?').get(travelBooking.lastInsertRowid);
+  check('the booking travelled with it', stillBooked && stillBooked.status === 'booked');
+
+  // The parent of a moved appointment has to be told, so the attempt is logged
+  // whether or not email is configured in this environment.
+  r = await edit({ action: 'move', department_ids: [arabic.id], dates: moveTo, shift_minutes: '5', notify: '1' });
+  check('a move with notification succeeds', r.status === 302);
+  let logged = null;
+  for (let i = 0; i < 20 && !logged; i += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise((done) => setTimeout(done, 100));
+    logged = db
+      .prepare("SELECT * FROM notifications WHERE booking_id = ? AND kind = 'reschedule' ORDER BY id DESC LIMIT 1")
+      .get(travelBooking.lastInsertRowid);
+  }
+  check('the parent was told their time changed', Boolean(logged), 'no reschedule notification logged');
+  await edit({ action: 'move', department_ids: [arabic.id], dates: moveTo, shift_minutes: '-5', notify: '' });
+
+  /* ---------------- shifting the clock ---------------- */
+  const beforeShift = db
+    .prepare('SELECT id, start_time, end_time FROM slots WHERE schedule_id = ? AND slot_date = ? ORDER BY start_time')
+    .all(aSched.id, moveTo);
+  r = await edit({ action: 'move', department_ids: [arabic.id], dates: moveTo, shift_minutes: '30', notify: '' });
+  check('the shift succeeds', r.status === 302);
+  const afterShift = db.prepare('SELECT id, start_time, end_time FROM slots WHERE id = ?').get(beforeShift[0].id);
+  const expected = (() => {
+    const [h, m] = beforeShift[0].start_time.split(':').map(Number);
+    const mins = h * 60 + m + 30;
+    return `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`;
+  })();
+  check('a sequential shift does not collide', afterShift.start_time === expected, `${afterShift.start_time} vs ${expected}`);
+  check(
+    'the slot count is unchanged',
+    db.prepare('SELECT COUNT(*) AS n FROM slots WHERE schedule_id = ? AND slot_date = ?').get(aSched.id, moveTo).n ===
+      beforeShift.length
+  );
+
+  /* ---------------- moves that must be refused ---------------- */
+  const snapshot = () =>
+    db.prepare('SELECT id, slot_date, start_time FROM slots WHERE schedule_id = ? ORDER BY id').all(aSched.id);
+  const was = JSON.stringify(snapshot());
+
+  r = await edit({ action: 'move', department_ids: [arabic.id], dates: moveTo });
+  check('a move with no date and no shift is refused', r.status === 302);
+  check('nothing moved', JSON.stringify(snapshot()) === was);
+
+  r = await edit({ action: 'move', department_ids: [arabic.id], dates: moveTo, new_date: '2020-01-01' });
+  check('a date in the past is refused', r.status === 302);
+  check('still nothing moved', JSON.stringify(snapshot()) === was);
+
+  // Both evenings onto one date: every time would collide with its twin.
+  r = await edit({ action: 'move', department_ids: [arabic.id], new_date: '2099-07-01' });
+  check('collapsing two evenings onto one date is refused', r.status === 302);
+  check('and nothing moved', JSON.stringify(snapshot()) === was);
+
+  // A shift that would run past midnight.
+  r = await edit({ action: 'move', department_ids: [arabic.id], dates: moveTo, shift_minutes: '1200' });
+  check('a shift past midnight is refused', r.status === 302);
+  check('again nothing moved', JSON.stringify(snapshot()) === was);
+
+  // Landing on a slot that is staying put.
+  const stayer = db.prepare('SELECT * FROM slots WHERE schedule_id = ? AND slot_date = ? ORDER BY start_time LIMIT 1').get(aSched.id, days[1]);
+  r = await edit({
+    action: 'move',
+    department_ids: [arabic.id],
+    dates: moveTo,
+    from_time: beforeShift[0] ? '00:00' : '00:00',
+    new_date: days[1],
+  });
+  check('landing on slots that stay is refused', r.status === 302);
+  check('the stayer is untouched', db.prepare('SELECT slot_date FROM slots WHERE id = ?').get(stayer.id).slot_date === days[1]);
+  check('and the movers stayed home', JSON.stringify(snapshot()) === was);
+
   /* ---------------- who may use it ---------------- */
   const teacher = jar();
   r = await req(teacher, 'POST', '/staff/login', { email: 'sara.mutairi@example.aca.edu.kw', password: 'Welcome123!' });
