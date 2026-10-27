@@ -17,3 +17,20 @@ need `playwright-core` and a Chromium; `docx` is a normal dependency.
 
 The Arabic was written by the generator, not a native speaker. Have it read
 once before it goes to parents.
+
+## The parent video
+
+`video.js` records the same booking flow with a visible cursor and a
+bilingual caption bar, no sound - a parent can follow it on mute.
+
+```bash
+npm run seed && npm start
+NODE_PATH=node_modules node docs/guides/video.js      # -> docs/guides/raw/booking.webm
+ffmpeg -i docs/guides/raw/booking.webm -vf "scale=1280:720:flags=lanczos,format=yuv420p" \
+  -c:v libx264 -preset slow -crf 20 -r 25 -movflags +faststart -an ACA-How-to-Book.mp4
+```
+
+Playwright's recorder needs an ffmpeg it recognises; if it complains, point
+`/opt/pw-browsers/ffmpeg-<n>/ffmpeg-linux` at the system ffmpeg. The capture
+is taken at 960x540 (Playwright pads rather than enlarges) and scaled to 720p
+in the encode.

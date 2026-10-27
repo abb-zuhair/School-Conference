@@ -9,3 +9,4 @@ data/
 npm-debug.log*
 docs/guides/shots/
 docs/guides/out/
+docs/guides/raw/
