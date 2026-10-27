@@ -7,3 +7,5 @@ data/
 .env
 .DS_Store
 npm-debug.log*
+docs/guides/shots/
+docs/guides/out/
