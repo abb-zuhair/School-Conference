@@ -49,6 +49,19 @@ async function req(j, method, path, body) {
   return { status: res.status, location: res.headers.get('location'), text };
 }
 
+/**
+ * Add a slot the way a parent does. The first pick in an event that collects
+ * a student sends the parent to "who is this for?"; this answers it, so the
+ * rest of the test reads as one family's visit.
+ */
+async function pick(j, slug, slotId, child) {
+  const r = await req(j, 'POST', `/e/${slug}/select`, { slot_id: slotId, action: 'add' });
+  if (r.status === 302 && String(r.location).includes('/child')) {
+    await req(j, 'POST', `/e/${slug}/child`, { slot_id: slotId, student_name: child, back: `/e/${slug}` });
+  }
+  return r;
+}
+
 async function follow(j, path) {
   let current = path;
   for (let i = 0; i < 5; i += 1) {
@@ -96,16 +109,16 @@ function slotIds(html) {
   r = await req(p, 'GET', `/e/ptc-term1-hawally/s/${schedIds[1]}`);
   const slotsB = slotIds(r.text);
 
-  await req(p, 'POST', '/e/ptc-term1-hawally/select', { slot_id: slotsA[0], action: 'add' });
-  await req(p, 'POST', '/e/ptc-term1-hawally/select', { slot_id: slotsB[1], action: 'add' });
+  await pick(p, 'ptc-term1-hawally', slotsA[0], 'Yousef Test');
+  await pick(p, 'ptc-term1-hawally', slotsB[1], 'Yousef Test');
 
   r = await req(p, 'GET', '/e/ptc-term1-hawally/review');
   check('review page lists both selections', (r.text.match(/Remove<\/button>/g) || []).length === 2);
 
   /* ---------------- overlap rule, caught at selection ---------------- */
   const overlapJar = jar();
-  await req(overlapJar, 'POST', '/e/ptc-term1-hawally/select', { slot_id: slotsA[0], action: 'add' });
-  r = await req(overlapJar, 'POST', '/e/ptc-term1-hawally/select', { slot_id: slotsB[0], action: 'add' });
+  await pick(overlapJar, 'ptc-term1-hawally', slotsA[0], 'Overlap Child');
+  r = await pick(overlapJar, 'ptc-term1-hawally', slotsB[0], 'Overlap Child');
   check('clashing pick redirects back', r.status === 302);
 
   r = await follow(overlapJar, '/e/ptc-term1-hawally/review');
@@ -145,7 +158,7 @@ function slotIds(html) {
 
   /* ---------------- double-booking a taken slot ---------------- */
   const rival = jar();
-  await req(rival, 'POST', '/e/ptc-term1-hawally/select', { slot_id: slotsA[0], action: 'add' });
+  await pick(rival, 'ptc-term1-hawally', slotsA[0], 'Rival Child');
   r = await req(rival, 'POST', '/e/ptc-term1-hawally/confirm', {
     parent_name: 'Rival Parent',
     parent_email: 'rival@example.com',
@@ -156,7 +169,7 @@ function slotIds(html) {
 
   /* ---------------- same teacher twice ---------------- */
   const again = jar();
-  await req(again, 'POST', '/e/ptc-term1-hawally/select', { slot_id: slotsA[3], action: 'add' });
+  await pick(again, 'ptc-term1-hawally', slotsA[3], 'Yousef Test');
   r = await req(again, 'POST', '/e/ptc-term1-hawally/confirm', {
     parent_name: 'Zuhair Test',
     parent_email: 'parent@example.com',
@@ -190,7 +203,7 @@ function slotIds(html) {
   r = await req(u, 'GET', `/e/uniform-hawally/s/${uSched}`);
   const uSlots = slotIds(r.text);
   check('counter slots show remaining places', r.text.includes('left'));
-  await req(u, 'POST', '/e/uniform-hawally/select', { slot_id: uSlots[0], action: 'add' });
+  await pick(u, 'uniform-hawally', uSlots[0], 'Uniform Child');
   r = await req(u, 'POST', '/e/uniform-hawally/confirm', {
     parent_name: 'Uniform Parent',
     parent_email: 'uniform@example.com',
@@ -200,7 +213,7 @@ function slotIds(html) {
   check('uniform booking succeeds', r.status === 302 && String(r.location).includes('/confirmation/'));
 
   const u2 = jar();
-  await req(u2, 'POST', '/e/uniform-hawally/select', { slot_id: uSlots[0], action: 'add' });
+  await pick(u2, 'uniform-hawally', uSlots[0], 'Second Child');
   r = await req(u2, 'POST', '/e/uniform-hawally/confirm', {
     parent_name: 'Second Parent',
     parent_email: 'uniform2@example.com',
@@ -227,7 +240,7 @@ function slotIds(html) {
 
   const locked = jar();
   r = await req(locked, 'GET', `/e/ptc-term1-hawally/s/${teacherSchedule}`);
-  await req(locked, 'POST', '/e/ptc-term1-hawally/select', { slot_id: slotIds(r.text)[0], action: 'add' });
+  await pick(locked, 'ptc-term1-hawally', slotIds(r.text)[0], 'Late Child');
   r = await req(locked, 'POST', '/e/ptc-term1-hawally/confirm', {
     parent_name: 'Late Parent',
     parent_email: 'late@example.com',

@@ -364,3 +364,17 @@ table.data tbody tr:hover { background: #fafcfd; }
 }
 /* A CSS display rule beats the browser's own [hidden] rule, so say it plainly. */
 [hidden] { display: none !important; }
+
+/* --- booking for more than one child --- */
+.for-child {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+  padding: 10px 12px; margin: 10px 0 4px;
+  background: #f1f6fa; border-radius: 10px; font-size: .92rem;
+}
+.for-child .btn { margin-left: auto; }
+.child-option { display: flex; padding: 8px 0; }
+#new-child.dim { opacity: .45; }
+#new-child.dim input { background: #f6f7f9; }
+.child-heading { margin: 18px 0 8px; font-size: 1.02rem; }
+.child-heading:first-of-type { margin-top: 4px; }
+form.assign select { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: #fff; min-width: 160px; max-width: 100%; }

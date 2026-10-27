@@ -177,10 +177,10 @@ function studentKey(event, { studentName, parentEmail }) {
   return `${email}|${String(studentName || '').trim().toLowerCase().replace(/\s+/g, ' ')}`;
 }
 
-/** Existing 'booked' rows for this student in this event. */
-function existingBookings(event, identity) {
+/** Every live booking this family (one parent email) holds in this event. */
+function familyBookings(event, identity) {
   const email = String(identity.parentEmail || '').trim().toLowerCase();
-  const rows = db
+  return db
     .prepare(
       `SELECT b.*, sl.slot_date, sl.start_time, sl.end_time, sc.label, sc.class_id, sc.staff_id
        FROM bookings b
@@ -189,6 +189,11 @@ function existingBookings(event, identity) {
        WHERE b.event_id = ? AND b.status = 'booked' AND lower(b.parent_email) = ?`
     )
     .all(event.id, email);
+}
+
+/** Existing 'booked' rows for this one student in this event. */
+function existingBookings(event, identity) {
+  const rows = familyBookings(event, identity);
   if (!event.collect_student) return rows;
   const key = studentKey(event, identity);
   return rows.filter((r) => studentKey(event, { studentName: r.student_name, parentEmail: r.parent_email }) === key);
@@ -201,16 +206,44 @@ function overlaps(a, b) {
 }
 
 /**
- * Validate a whole basket of slots for one parent in one event.
+ * Normalise what the routes hand us. A basket item is a slot id plus the
+ * student it is for; a bare list of ids means every slot is for the one
+ * student named in `identity` — which is how a single-child booking, and
+ * every event that does not collect a student at all, still arrives.
+ */
+function normaliseItems(slotIds, identity) {
+  return slotIds
+    .map((entry) =>
+      typeof entry === 'object' && entry !== null
+        ? { slotId: Number(entry.slotId), student: entry.student || {} }
+        : {
+            slotId: Number(entry),
+            student: { name: identity.studentName, grade: identity.studentGrade, ref: identity.studentRef },
+          }
+    )
+    .filter((it) => it.slotId);
+}
+
+/**
+ * Validate a whole basket for one family in one event.
+ *
+ * Two kinds of rule live here and they scope differently. "You cannot be in
+ * two places at once" is about the parent, so it runs across every child in
+ * the basket and every booking already on the parent's email. "One
+ * appointment per teacher" and the per-student cap are about a child, so
+ * twins in the same class can each see the teacher.
+ *
  * Returns { ok, errors: [], slots: [...] }
  */
 function validateBasket(event, slotIds, identity) {
   const errors = [];
-  const unique = [...new Set(slotIds.map(Number).filter(Boolean))];
+  const items = normaliseItems(slotIds, identity);
+  const seen = new Set();
+  const unique = items.filter((it) => (seen.has(it.slotId) ? false : seen.add(it.slotId)));
   if (!unique.length) return { ok: false, errors: ['Choose at least one time slot.'], slots: [] };
 
-  const slots = unique.map((id) =>
-    db
+  const slots = unique.map((it) => {
+    const row = db
       .prepare(
         `SELECT sl.*, sc.id AS schedule_id, sc.locked, sc.published, sc.event_id,
                 sc.label, sc.class_id, sc.staff_id,
@@ -218,11 +251,12 @@ function validateBasket(event, slotIds, identity) {
          FROM slots sl JOIN schedules sc ON sc.id = sl.schedule_id
          WHERE sl.id = ?`
       )
-      .get(id)
-  );
+      .get(it.slotId);
+    return row ? { ...row, student: it.student } : null;
+  });
 
   const now = nowLocal();
-  slots.forEach((slot, i) => {
+  slots.forEach((slot) => {
     if (!slot) {
       errors.push('One of the selected times no longer exists.');
       return;
@@ -233,59 +267,80 @@ function validateBasket(event, slotIds, identity) {
     if (!slot.published) errors.push('A selected schedule is not published.');
     if (slot.capacity - slot.booked <= 0) errors.push(`${slot.start_time} on ${slot.slot_date} was just taken.`);
     if (localDT(slot.slot_date, slot.start_time) < now) errors.push('A selected time is in the past.');
-    void i;
+    if (event.collect_student && !String(slot.student.name || '').trim()) {
+      errors.push('Every appointment needs the name of the child it is for.');
+    }
   });
   if (errors.length) return { ok: false, errors: [...new Set(errors)], slots };
 
-  // Overlap inside the basket
+  const keyOf = (student) => studentKey(event, { studentName: student.name, parentEmail: identity.parentEmail });
+  const who = (student) => (event.collect_student && student.name ? ` for ${student.name}` : '');
+
+  // The parent cannot be in two rooms at once - whichever child each is for.
   if (event.prevent_overlap) {
     for (let i = 0; i < slots.length; i += 1) {
       for (let j = i + 1; j < slots.length; j += 1) {
         if (overlaps(slots[i], slots[j])) {
           errors.push(
-            `Two of your choices are at the same time (${slots[i].slot_date} ${slots[i].start_time}). Pick a different slot for one of them.`
+            `Two of your choices are at the same time (${slots[i].slot_date} ${slots[i].start_time}${who(slots[i].student)} and${who(slots[j].student)}). You cannot be in two places at once - pick a different slot for one of them.`
           );
         }
       }
     }
   }
 
-  const existing = existingBookings(event, identity);
+  const family = familyBookings(event, identity);
 
-  // Overlap with what the family already holds
   if (event.prevent_overlap) {
     for (const s of slots) {
-      const clash = existing.find((e) => overlaps(s, e));
+      const clash = family.find((e) => overlaps(s, e));
       if (clash) {
+        const theirs = event.collect_student && clash.student_name ? ` for ${clash.student_name}` : '';
         errors.push(
-          `You already have an appointment at ${clash.start_time} on ${clash.slot_date}. Choose another time.`
+          `You already have an appointment at ${clash.start_time} on ${clash.slot_date}${theirs}. Choose another time.`
         );
       }
     }
   }
 
-  // One appointment per schedule per student
+  // One appointment per teacher per child - against earlier bookings and
+  // against the rest of this basket.
+  const perChild = new Map(); // studentKey -> { existing: [], basket: [] }
   for (const s of slots) {
-    if (existing.some((e) => e.schedule_id === s.schedule_id)) {
-      errors.push('You already have an appointment with one of these teachers for this student.');
+    const k = keyOf(s.student);
+    if (!perChild.has(k)) {
+      perChild.set(k, {
+        existing: family.filter(
+          (e) => studentKey(event, { studentName: e.student_name, parentEmail: e.parent_email }) === k
+        ),
+        basket: [],
+      });
+    }
+    perChild.get(k).basket.push(s);
+  }
+  for (const [, group] of perChild) {
+    const schedulesSeen = new Set(group.existing.map((e) => e.schedule_id));
+    for (const s of group.basket) {
+      if (schedulesSeen.has(s.schedule_id)) {
+        errors.push(
+          `You already have an appointment with one of these teachers${who(s.student)} - one time per teacher per child.`
+        );
+      }
+      schedulesSeen.add(s.schedule_id);
+    }
+    if (event.max_per_student > 0 && group.existing.length + group.basket.length > event.max_per_student) {
+      const name = group.basket[0].student.name;
+      errors.push(
+        `This event allows ${event.max_per_student} appointment(s) per student${name ? ` - ${name} would have ${group.existing.length + group.basket.length}` : ''}.`
+      );
     }
   }
 
-  // Per-student cap
-  if (event.max_per_student > 0 && existing.length + slots.length > event.max_per_student) {
-    errors.push(
-      `This event allows ${event.max_per_student} appointment(s) per student. You already have ${existing.length}.`
-    );
-  }
-
-  return { ok: errors.length === 0, errors: [...new Set(errors)], slots, existing };
+  return { ok: errors.length === 0, errors: [...new Set(errors)], slots, existing: family };
 }
 
-/**
- * Create bookings atomically. Re-checks capacity inside the transaction so two
- * parents clicking the same slot at the same moment cannot both win.
- */
 const createBookings = db.transaction((event, slotIds, details) => {
+  const items = normaliseItems(slotIds, details);
   const groupToken = token(12);
   const created = [];
   const capStmt = db.prepare(
@@ -302,7 +357,7 @@ const createBookings = db.transaction((event, slotIds, details) => {
        @parent_name, @parent_email, @parent_phone, @notes, 'booked', @token, @group_token, @language)`
   );
 
-  for (const slotId of slotIds) {
+  for (const { slotId, student } of items) {
     const row = capStmt.get(slotId);
     if (!row) throw new Error('That time slot no longer exists.');
     if (row.blocked || row.locked) throw new Error('That time slot is no longer open.');
@@ -311,9 +366,9 @@ const createBookings = db.transaction((event, slotIds, details) => {
       slot_id: slotId,
       event_id: event.id,
       schedule_id: row.schedule_id,
-      student_name: details.studentName || null,
-      student_grade: details.studentGrade || null,
-      student_ref: details.studentRef || null,
+      student_name: String(student.name || '').trim() || null,
+      student_grade: String(student.grade || '').trim() || null,
+      student_ref: String(student.ref || '').trim() || null,
       parent_name: details.parentName,
       parent_email: details.parentEmail,
       parent_phone: details.parentPhone || null,
@@ -373,7 +428,7 @@ function bookingsByGroup(groupToken) {
        LEFT JOIN departments d ON d.id = sc.department_id
        LEFT JOIN campuses cp ON cp.id = e.campus_id
        WHERE b.group_token = ?
-       ORDER BY sl.slot_date, sl.start_time`
+       ORDER BY b.student_name, sl.slot_date, sl.start_time`
     )
     .all(groupToken);
 }
@@ -419,6 +474,7 @@ module.exports = {
   bookingsByGroup,
   bookingById,
   existingBookings,
+  familyBookings,
   canParentCancel,
   cancelBooking,
   overlaps,

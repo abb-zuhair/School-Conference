@@ -15,33 +15,72 @@
     <p class="muted">Nothing selected yet.</p>
     <a class="btn" href="/e/<%= event.slug %>">Choose a time</a>
   <% } else { %>
-    <div class="table-wrap">
-      <table class="data">
-        <thead><tr><th>When</th><th>With</th><th></th></tr></thead>
-        <tbody>
-          <% items.forEach(function (it) { %>
-            <tr>
-              <td><strong><%= h.formatShortDate(it.slot_date) %></strong><br><%= h.formatTime(it.start_time) %> – <%= h.formatTime(it.end_time) %></td>
-              <td>
-                <%= it.display_name %>
-                <% if (it.staff_name) { %><br><span class="muted small"><%= it.staff_name %></span><% } %>
-                <% if (it.department_name) { %><span class="muted small"> · <%= it.department_name %></span><% } %>
-              </td>
-              <td style="text-align:end">
-                <form method="post" action="/e/<%= event.slug %>/select">
-                  <input type="hidden" name="slot_id" value="<%= it.id %>">
-                  <input type="hidden" name="action" value="remove">
-                  <input type="hidden" name="redirect" value="basket">
-                  <button class="btn sm danger" type="submit">Remove</button>
-                </form>
-              </td>
-            </tr>
-          <% }); %>
-        </tbody>
-      </table>
-    </div>
+    <%
+      // Group by child so a family sees each child's evening together. Events
+      // that do not collect a student have a single unnamed group.
+      var groups = [];
+      items.forEach(function (it) {
+        var key = it.child ? it.child.name : '';
+        var g = groups.find(function (x) { return x.key === key; });
+        if (!g) { g = { key: key, child: it.child, items: [] }; groups.push(g); }
+        g.items.push(it);
+      });
+    %>
+    <% groups.forEach(function (g) { %>
+      <% if (event.collect_student) { %>
+        <h3 class="child-heading">
+          <% if (g.child) { %>
+            <%= g.child.name %><% if (g.child.grade) { %> <span class="muted small">· <%= g.child.grade %></span><% } %>
+          <% } else { %>
+            <span class="badge warn">Not assigned to a child yet</span>
+            <a class="btn sm" href="/e/<%= event.slug %>/child?back=<%= encodeURIComponent('/e/' + event.slug + '/review') %>" style="margin-left:8px">Say who these are for</a>
+          <% } %>
+        </h3>
+      <% } %>
+      <div class="table-wrap">
+        <table class="data">
+          <thead><tr><th>When</th><th>With</th><% if (event.collect_student && children.length > 1) { %><th>For</th><% } %><th></th></tr></thead>
+          <tbody>
+            <% g.items.forEach(function (it) { %>
+              <tr>
+                <td><strong><%= h.formatShortDate(it.slot_date) %></strong><br><%= h.formatTime(it.start_time) %> – <%= h.formatTime(it.end_time) %></td>
+                <td>
+                  <%= it.display_name %>
+                  <% if (it.staff_name) { %><br><span class="muted small"><%= it.staff_name %></span><% } %>
+                  <% if (it.department_name) { %><span class="muted small"> · <%= it.department_name %></span><% } %>
+                </td>
+                <% if (event.collect_student && children.length > 1) { %>
+                  <td>
+                    <form method="post" action="/e/<%= event.slug %>/assign" class="assign">
+                      <input type="hidden" name="slot_id" value="<%= it.id %>">
+                      <select name="child" aria-label="Which child this appointment is for" onchange="this.form.submit()">
+                        <% children.forEach(function (c, i) { %>
+                          <option value="<%= i %>" <%= it.child && it.child.name === c.name ? 'selected' : '' %>><%= c.name %></option>
+                        <% }); %>
+                      </select>
+                      <noscript><button class="btn sm ghost" type="submit">Change</button></noscript>
+                    </form>
+                  </td>
+                <% } %>
+                <td style="text-align:end">
+                  <form method="post" action="/e/<%= event.slug %>/select">
+                    <input type="hidden" name="slot_id" value="<%= it.id %>">
+                    <input type="hidden" name="action" value="remove">
+                    <input type="hidden" name="redirect" value="basket">
+                    <button class="btn sm danger" type="submit">Remove</button>
+                  </form>
+                </td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      </div>
+    <% }); %>
     <div class="btn-row" style="margin-top:12px">
       <a class="btn ghost sm" href="/e/<%= event.slug %>">+ Add another appointment</a>
+      <% if (event.collect_student) { %>
+        <a class="btn ghost sm" href="/e/<%= event.slug %>/child?back=<%= encodeURIComponent('/e/' + event.slug) %>">+ Add another child</a>
+      <% } %>
     </div>
   <% } %>
 </div>
@@ -49,22 +88,8 @@
 <% if (items.length) { %>
 <form method="post" action="/e/<%= event.slug %>/confirm" class="card">
   <h2>Your details</h2>
-
   <% if (event.collect_student) { %>
-    <div class="row">
-      <div class="field">
-        <label for="student_name">Student's full name *</label>
-        <input id="student_name" name="student_name" type="text" required value="<%= form.studentName || '' %>">
-      </div>
-      <div class="field">
-        <label for="student_grade">Grade / class</label>
-        <input id="student_grade" name="student_grade" type="text" value="<%= form.studentGrade || '' %>">
-      </div>
-    </div>
-    <div class="field">
-      <label for="student_ref">Student ID <span class="muted">(optional)</span></label>
-      <input id="student_ref" name="student_ref" type="text" value="<%= form.studentRef || '' %>">
-    </div>
+    <p class="muted small">Entered once — it covers every appointment above.</p>
   <% } %>
 
   <div class="row">

@@ -1,0 +1,88 @@
+<%- include('../partials/head', { narrow: true }) %>
+
+<div class="crumbs"><a href="/e/<%= event.slug %>"><%= event.name %></a><span>›</span>Who is this for?</div>
+
+<div class="card">
+  <h1>Who is this appointment for?</h1>
+  <% if (pending) { %>
+    <p class="muted">
+      <strong><%= h.formatTime(pending.start_time) %></strong> on <%= h.formatShortDate(pending.slot_date) %>
+      with <%= pending.display_name %><% if (pending.staff_name) { %> (<%= pending.staff_name %>)<% } %>.
+    </p>
+  <% } %>
+  <p class="muted small">
+    If you have more than one child at the school, you can book for all of them in one go —
+    name each child once, and switch between them as you pick times.
+  </p>
+
+  <% if (error) { %><div class="alert error"><%= error %></div><% } %>
+
+  <form method="post" action="/e/<%= event.slug %>/child" id="child-form">
+    <input type="hidden" name="slot_id" value="<%= pending ? pending.id : '' %>">
+    <input type="hidden" name="back" value="<%= back %>">
+
+    <% if (children.length) { %>
+      <div class="field">
+        <label>Choose a child</label>
+        <% children.forEach(function (c, i) { %>
+          <label class="check child-option">
+            <input type="radio" name="child" value="<%= i %>" <%= (current === i && !form.student_name) ? 'checked' : '' %>>
+            <span><strong><%= c.name %></strong><% if (c.grade) { %> <span class="muted small">· <%= c.grade %></span><% } %></span>
+          </label>
+        <% }); %>
+        <label class="check child-option">
+          <input type="radio" name="child" value="new" <%= form.student_name ? 'checked' : '' %>>
+          <span>Another child</span>
+        </label>
+      </div>
+    <% } %>
+
+    <div id="new-child" <%= children.length && !form.student_name ? 'class="dim"' : '' %>>
+      <div class="row">
+        <div class="field">
+          <label for="student_name">Child's full name <%= children.length ? '' : '*' %></label>
+          <input id="student_name" name="student_name" type="text" value="<%= form.student_name || '' %>" <%= children.length ? '' : 'required autofocus' %>>
+        </div>
+        <div class="field">
+          <label for="student_grade">Grade / class</label>
+          <input id="student_grade" name="student_grade" type="text" value="<%= form.student_grade || '' %>" placeholder="e.g. Grade 5A">
+        </div>
+      </div>
+      <div class="field">
+        <label for="student_ref">Student ID <span class="muted">(optional)</span></label>
+        <input id="student_ref" name="student_ref" type="text" value="<%= form.student_ref || '' %>">
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn" type="submit"><%= pending ? 'Continue and add this time' : 'Continue' %></button>
+      <a class="btn ghost" href="<%= back %>">Back</a>
+    </div>
+  </form>
+</div>
+
+<script>
+  (function () {
+    var form = document.getElementById('child-form');
+    var panel = document.getElementById('new-child');
+    var radios = form.querySelectorAll('input[name=child]');
+    if (!radios.length) return;
+    function update() {
+      var picked = form.querySelector('input[name=child]:checked');
+      var isNew = !picked || picked.value === 'new';
+      panel.classList.toggle('dim', !isNew);
+      var name = document.getElementById('student_name');
+      name.required = isNew;
+      if (isNew) name.focus();
+    }
+    radios.forEach(function (r) { r.addEventListener('change', update); });
+    // Typing a name means "another child", whatever was ticked.
+    document.getElementById('student_name').addEventListener('input', function () {
+      var n = form.querySelector('input[name=child][value=new]');
+      if (n && this.value.trim()) { n.checked = true; update(); }
+    });
+    update();
+  })();
+</script>
+
+<%- include('../partials/foot') %>

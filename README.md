@@ -42,12 +42,13 @@ the admin exports, and access control.
 ```bash
 npm run features     # CSV upload, compare toggle, department slot generation, back-ups
 npm run department   # department-head permissions, both sides, and the teacher search
-npm run slots        # bulk slot delete/close/reopen, and the guards on them
+npm run slots        # bulk slot delete/close/reopen/move, and the guards on them
+npm run family       # several children in one booking, and the two ways the rules scope
 npm run sso          # Entra sign-in against a mock login host — starts its own instance
 npm run messaging    # WhatsApp templates against a mock WATI host
 ```
 
-`npm run smoke`, `features`, `department` and `slots` each want a freshly seeded
+`npm run smoke`, `features`, `department`, `slots` and `family` each want a freshly seeded
 database, so reset and reseed between them.
 
 `npm run sso` needs no Microsoft credentials: it runs a fake authority on port 3101 and
@@ -66,6 +67,7 @@ forged `state`.
 - **Find a teacher by name.** A department with more than one teacher gets a search box: type a name or a class ("Sara", "Grade 5A") and the list narrows as you type. Arabic is matched the way people actually type it — ة and ه, أ and ا, and vowel marks all stop mattering, so "فاطمه" finds "فاطمة". It falls back to a plain `?q=` search when JavaScript is off.
 - **Side-by-side compare** — tick two or more teachers and see their evenings on one grid, so a family can line up back-to-back slots. Optional per event (**Offer the side-by-side comparison grid**); turn it off for single-desk events and both the button and the URL disappear.
 - Build a basket of times across several teachers and confirm once.
+- **More than one child.** The first time a parent picks a slot in a conference they are asked who it is for; after that the picker says *Choosing times for Ahmed* with a switch, and a second child is named once. The review page groups the evening by child, with a *for* control to move a time between them; parent details are entered once; one confirmation page and one WhatsApp cover the whole family, each line naming the child. Twins in the same class can each see the teacher. Events that do not collect a student (uniform, registration) never ask.
 - Confirmation by email + WhatsApp, each with a private manage link.
 - Cancel online (subject to the event's cutoff), download an `.ics`, or find bookings again at `/lookup` with the email used.
 
@@ -73,9 +75,9 @@ forged `state`.
 
 | Rule | Where it is set |
 |---|---|
-| Max appointments per student | Event setting (`0` = unlimited) |
-| No two appointments at the same clock time for one family | Event setting `prevent_overlap` — refused the moment the parent picks it, and clashing times render in red in both the slot picker and the compare grid |
-| One appointment per teacher per student | Always on |
+| Max appointments per student | Event setting (`0` = unlimited), counted per child |
+| No two appointments at the same clock time for one family | Event setting `prevent_overlap` — refused the moment the parent picks it, and clashing times render in red in both the slot picker and the compare grid. Checked across **every child** in the basket and every booking already on the parent's email, because the parent is the one who cannot be in two rooms |
+| One appointment per teacher per student | Always on, **per child** — within a basket as well as against earlier bookings |
 | No double-booking a full slot | Enforced inside a SQL transaction — two parents clicking at once cannot both win |
 | No booking a locked schedule or a past time | Always on |
 | Cancellation cutoff | Event setting, in hours before the start |

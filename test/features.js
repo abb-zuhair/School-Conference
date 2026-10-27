@@ -52,6 +52,19 @@ async function req(j, method, path, body, isForm) {
   return { status: res.status, location: res.headers.get('location'), text, headers: res.headers };
 }
 
+/**
+ * Add a slot the way a parent does. The first pick in an event that collects
+ * a student sends the parent to "who is this for?"; this answers it, so the
+ * rest of the test reads as one family's visit.
+ */
+async function pick(j, slug, slotId, child) {
+  const r = await req(j, 'POST', `/e/${slug}/select`, { slot_id: slotId, action: 'add' });
+  if (r.status === 302 && String(r.location).includes('/child')) {
+    await req(j, 'POST', `/e/${slug}/child`, { slot_id: slotId, student_name: child, back: `/e/${slug}` });
+  }
+  return r;
+}
+
 async function follow(j, path) {
   let cur = path;
   for (let i = 0; i < 5; i += 1) {
@@ -373,7 +386,7 @@ async function follow(j, path) {
   const confSchedule = [...r.text.matchAll(/\/s\/(\d+)"/g)].map((m) => Number(m[1]))[0];
   r = await req(confParent, 'GET', `/e/ptc-term1-hawally/s/${confSchedule}`);
   const confSlot = [...r.text.matchAll(/name="slot_id" value="(\d+)"/g)].map((m) => Number(m[1]))[0];
-  await req(confParent, 'POST', '/e/ptc-term1-hawally/select', { slot_id: confSlot, action: 'add' });
+  await pick(confParent, 'ptc-term1-hawally', confSlot, 'Guard Child');
   r = await req(confParent, 'POST', '/e/ptc-term1-hawally/confirm', {
     parent_name: 'Guard Test', parent_email: 'guard@example.com',
     parent_phone: '55990011', student_name: 'Guard Child',
@@ -428,7 +441,7 @@ async function follow(j, path) {
   const uSched2 = Number((r.text.match(/\/s\/(\d+)/) || [])[1]);
   r = await req(parent, 'GET', `/e/uniform-hawally/s/${uSched2}`);
   const uSlot2 = [...r.text.matchAll(/name="slot_id" value="(\d+)"/g)].map((m) => Number(m[1]))[0];
-  await req(parent, 'POST', '/e/uniform-hawally/select', { slot_id: uSlot2, action: 'add' });
+  await pick(parent, 'uniform-hawally', uSlot2, 'Delete Child');
   r = await req(parent, 'POST', '/e/uniform-hawally/confirm', {
     parent_name: 'Delete Test', parent_email: 'deletetest@example.com',
     parent_phone: '55112233', student_name: 'Delete Child',

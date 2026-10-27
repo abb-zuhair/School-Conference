@@ -156,10 +156,11 @@ function eventLabel(b) {
   return b.campus_name ? `${b.event_name} (${b.campus_name})` : b.event_name;
 }
 
-/** "Sun 27 Sep 3:10 PM — Sara Al-Mutairi (Room B-204)" */
+/** "Sun 27 Sep 3:10 PM — Sara Al-Mutairi (Room B-204)", with the child in front when there is one: "Ahmed: Sun 27 Sep …" */
 function appointmentLine(b) {
   const where = b.location || b.room || '';
-  return `${formatShortDate(b.slot_date)} ${formatTime(b.start_time)} — ${withWhom(b)}${where ? ` (${where})` : ''}`;
+  const child = b.student_name ? `${b.student_name}: ` : '';
+  return `${child}${formatShortDate(b.slot_date)} ${formatTime(b.start_time)} — ${withWhom(b)}${where ? ` (${where})` : ''}`;
 }
 
 function whatsappParams(b) {

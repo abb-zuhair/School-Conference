@@ -73,6 +73,7 @@ function jar() {
 }
 
 async function req(j, method, p, body) {
+
   const headers = { Cookie: j.header() };
   let payload;
   if (body) {
@@ -88,6 +89,19 @@ async function req(j, method, p, body) {
   j.absorb(res);
   const text = res.status === 302 ? '' : await res.text();
   return { status: res.status, location: res.headers.get('location'), text };
+}
+
+/**
+ * Add a slot the way a parent does. The first pick in an event that collects
+ * a student sends the parent to "who is this for?"; this answers it, so the
+ * rest of the test reads as one family's visit.
+ */
+async function pick(j, slug, slotId, child) {
+  const r = await req(j, 'POST', `/e/${slug}/select`, { slot_id: slotId, action: 'add' });
+  if (r.status === 302 && String(r.location).includes('/child')) {
+    await req(j, 'POST', `/e/${slug}/child`, { slot_id: slotId, student_name: child, back: `/e/${slug}` });
+  }
+  return r;
 }
 
 async function follow(j, p) {
@@ -214,9 +228,11 @@ const settle = () => new Promise((r) => setTimeout(r, 600));
   r = await req(parent, 'GET', '/e/ptc/s/2');
   const slotsTwo = [...r.text.matchAll(/name="slot_id" value="(\d+)"/g)].map((m) => Number(m[1]));
 
-  await req(parent, 'POST', '/e/ptc/select', { slot_id: slotsOne[0], action: 'add' });
-  await req(parent, 'POST', '/e/ptc/select', { slot_id: slotsTwo[1], action: 'add' });
-  await req(parent, 'POST', '/e/ptc/select', { slot_id: slotsTwo[2], action: 'add' });
+  // Two children in one visit: Yousef sees both teachers, Layla sees Laura.
+  await pick(parent, 'ptc', slotsOne[0], 'Yousef');
+  await pick(parent, 'ptc', slotsTwo[1], 'Yousef');
+  await req(parent, 'POST', '/e/ptc/child', { student_name: 'Layla', back: '/e/ptc' });
+  await pick(parent, 'ptc', slotsTwo[2], 'Layla');
 
   r = await req(parent, 'POST', '/e/ptc/confirm', {
     parent_name: 'Fatima Al-Otaibi',
@@ -239,6 +255,8 @@ const settle = () => new Promise((r) => setTimeout(r, 600));
     (msg.params[2] || '').split('·').length === 3, msg.params[2]);
   check('the list names both teachers', (msg.params[2] || '').includes('Sara Al-Mutairi') && (msg.params[2] || '').includes('Laura Bennett'));
   check('the room is included', (msg.params[2] || '').includes('Room B-204'));
+  check('each line says which child it is for',
+    (msg.params[2] || '').includes('Yousef:') && (msg.params[2] || '').includes('Layla:'), msg.params[2]);
   check('no newlines in any parameter', msg.params.every((p) => !/[\r\n\t]/.test(p)));
   check('last parameter links to all of them', /\/confirmation\/[A-Za-z0-9_-]+$/.test(msg.params[3] || ''));
 
@@ -255,8 +273,9 @@ const settle = () => new Promise((r) => setTimeout(r, 600));
   const parent2 = jar();
   r = await req(parent2, 'GET', '/e/ptc/s/1');
   const more = [...r.text.matchAll(/name="slot_id" value="(\d+)"/g)].map((m) => Number(m[1]));
-  await req(parent2, 'POST', '/e/ptc/select', { slot_id: more[0], action: 'add' });
-  await req(parent2, 'POST', '/e/ptc/select', { slot_id: more[1], action: 'add' });
+  await pick(parent2, 'ptc', more[0], 'Noor');
+  await req(parent2, 'POST', '/e/ptc/child', { student_name: 'Omar', back: '/e/ptc' });
+  await pick(parent2, 'ptc', more[1], 'Omar');
   r = await req(parent2, 'POST', '/e/ptc/confirm', {
     parent_name: 'Second Parent',
     parent_email: 'second@example.com',
@@ -278,7 +297,7 @@ const settle = () => new Promise((r) => setTimeout(r, 600));
   const parent3 = jar();
   r = await req(parent3, 'GET', '/e/ptc/s/2');
   const last = [...r.text.matchAll(/name="slot_id" value="(\d+)"/g)].map((m) => Number(m[1]));
-  await req(parent3, 'POST', '/e/ptc/select', { slot_id: last[0], action: 'add' });
+  await pick(parent3, 'ptc', last[0], 'Dana');
   r = await req(parent3, 'POST', '/e/ptc/confirm', {
     parent_name: 'Third Parent',
     parent_email: 'third@example.com',

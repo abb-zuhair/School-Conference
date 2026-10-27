@@ -18,12 +18,28 @@
   <% if (schedule.notes) { %><div class="instructions"><%= schedule.notes %></div><% } %>
   <p class="muted small">Pick a time below. You can add more teachers before confirming.</p>
 
+  <% if (event.collect_student) { %>
+    <div class="for-child">
+      <% if (currentChild) { %>
+        <span>Choosing times for <strong><%= currentChild.name %></strong><% if (currentChild.grade) { %> <span class="muted small">(<%= currentChild.grade %>)</span><% } %></span>
+        <a class="btn sm ghost" href="/e/<%= event.slug %>/child?back=<%= encodeURIComponent('/e/' + event.slug + '/s/' + schedule.id) %>">
+          <%= children.length > 1 ? 'Switch child' : 'Another child' %>
+        </a>
+      <% } else { %>
+        <span class="muted small">You will be asked which child the first time is for.</span>
+      <% } %>
+    </div>
+  <% } %>
+
   <% if (held.length) { %>
     <div class="held-note">
       <strong class="small">Times you have already chosen</strong>
       <ul class="small">
         <% held.forEach(function (item) { %>
-          <li><strong><%= h.formatTime(item.start_time) %></strong> on <%= h.formatShortDate(item.slot_date) %> — <%= item.display_name %></li>
+          <li>
+            <strong><%= h.formatTime(item.start_time) %></strong> on <%= h.formatShortDate(item.slot_date) %> — <%= item.display_name %>
+            <% if (item.child) { %><span class="muted">for <%= item.child.name %></span><% } %>
+          </li>
         <% }); %>
       </ul>
       <span class="small muted">Those clock times are shown in red below — you cannot be in two rooms at once.</span>
