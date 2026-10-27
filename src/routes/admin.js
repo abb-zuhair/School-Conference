@@ -733,7 +733,7 @@ router.get('/events/:id', loadEvent, (req, res) => {
     .map((s) => ({ ...s, stats: sched.scheduleStats(s.id) }));
   const departments = db.prepare('SELECT * FROM departments WHERE campus_id = ? ORDER BY sort_order, name').all(req.event.campus_id);
   const teachers = db
-    .prepare("SELECT * FROM staff WHERE campus_id = ? AND active = 1 AND role IN ('teacher','desk','campus_admin') ORDER BY name")
+    .prepare("SELECT * FROM staff WHERE campus_id = ? AND active = 1 AND role IN ('teacher','desk','campus_admin','dept_head') ORDER BY name")
     .all(req.event.campus_id);
   const stats = db
     .prepare(

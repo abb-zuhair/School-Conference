@@ -7,6 +7,9 @@
       <div class="muted small"><%= user.title || user.role %> · <%= user.email %></div>
     </div>
     <div class="spacer"></div>
+    <% if (user.role === 'dept_head') { %>
+      <a class="btn sm" href="/staff/department">My department</a>
+    <% } %>
     <a class="btn ghost sm" href="/staff/password">Change password</a>
   </div>
 </div>

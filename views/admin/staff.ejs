@@ -69,7 +69,7 @@
             <td class="small mono"><%= s.email %></td>
             <td class="small"><%= s.campus_name || '—' %></td>
             <td class="small"><%= s.department_name || '—' %></td>
-            <td><span class="badge <%= ['admin','campus_admin'].includes(s.role) ? 'warn' : 'muted' %>"><%= s.role %></span></td>
+            <td><span class="badge <%= ['admin','campus_admin'].includes(s.role) ? 'warn' : s.role === 'dept_head' ? 'ok' : 'muted' %>"><%= h.roleLabel(s.role) %></span></td>
             <td><%= s.class_count %></td>
             <td style="white-space:nowrap">
               <form method="post" action="/admin/staff/<%= s.id %>/reset-password" style="display:inline" onsubmit="return confirm('Issue a new temporary password?')">
@@ -136,8 +136,9 @@
     <div class="field">
       <label>Role</label>
       <select name="role">
-        <% roles.forEach(function (r) { %><option value="<%= r %>" <%= r === 'teacher' ? 'selected' : '' %>><%= r %></option><% }); %>
+        <% roles.forEach(function (r) { %><option value="<%= r %>" <%= r === 'teacher' ? 'selected' : '' %>><%= h.roleLabel(r) %></option><% }); %>
       </select>
+      <div class="hint">A <strong>department head</strong> manages every schedule in the department chosen above, so set that department too.</div>
     </div>
   </div>
   <button class="btn" type="submit">Save staff member</button>

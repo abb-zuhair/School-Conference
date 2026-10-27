@@ -101,6 +101,130 @@ router.get('/', (req, res) => {
   res.render('staff/dashboard', { title: 'My schedules', schedules, upcoming });
 });
 
+/* --------------------------- department ---------------------------- *
+ * A department head's view of everyone they are responsible for. The rule
+ * for "in my department" is the one in auth.headsThisSchedule, written as
+ * SQL: the schedule's own department when it has one, otherwise the owning
+ * teacher's. Change one and you must change the other.
+ * ------------------------------------------------------------------- */
+
+const DEPT_WHERE = `WHERE e.status != 'archived' AND e.campus_id = ?
+   AND (s.department_id = ? OR (s.department_id IS NULL AND st.department_id = ?))`;
+
+function departmentParams(user) {
+  return [user.campus_id, user.department_id, user.department_id];
+}
+
+/** Groups the department's schedules under the teacher who owns each one. */
+function departmentTeachers(user) {
+  const schedules = sched
+    .listSchedules(`${DEPT_WHERE} ORDER BY e.id DESC, st.name, c.sort_order, c.name`, departmentParams(user))
+    .map((s) => ({ ...s, stats: sched.scheduleStats(s.id) }));
+
+  const teachers = [];
+  for (const s of schedules) {
+    const key = s.staff_id || `label:${s.display_name}`;
+    let t = teachers.find((x) => x.key === key);
+    if (!t) {
+      t = {
+        key,
+        staff_id: s.staff_id,
+        name: s.staff_name || s.display_name,
+        title: s.staff_title,
+        email: s.staff_email,
+        schedules: [],
+        booked: 0,
+        capacity: 0,
+      };
+      teachers.push(t);
+    }
+    t.schedules.push(s);
+    t.booked += s.stats.booked;
+    t.capacity += s.stats.capacity;
+  }
+  teachers.sort((a, b) => a.name.localeCompare(b.name));
+  return teachers;
+}
+
+/** Every head reaches this; nobody else does. */
+function requireDeptHead(req, res, next) {
+  const user = auth.currentUser(req);
+  if (!user || user.role !== 'dept_head') {
+    return res.status(403).render('error', {
+      title: 'Not allowed',
+      status: 403,
+      message: 'Only a department head can open the department view.',
+    });
+  }
+  if (!user.department_id) {
+    return res.status(409).render('error', {
+      title: 'No department set',
+      status: 409,
+      message: 'Your account is a department head but no department is assigned to it. Ask the IT office to set one.',
+    });
+  }
+  return next();
+}
+
+router.get('/department', requireDeptHead, (req, res) => {
+  const user = auth.currentUser(req);
+  const department = db.prepare('SELECT * FROM departments WHERE id = ?').get(user.department_id);
+  const teachers = departmentTeachers(user);
+  const totals = teachers.reduce(
+    (a, t) => ({
+      teachers: a.teachers + 1,
+      schedules: a.schedules + t.schedules.length,
+      booked: a.booked + t.booked,
+      capacity: a.capacity + t.capacity,
+    }),
+    { teachers: 0, schedules: 0, booked: 0, capacity: 0 }
+  );
+  res.render('staff/department', {
+    title: department ? department.name : 'My department',
+    department,
+    teachers,
+    totals,
+  });
+});
+
+router.get('/department/export.csv', requireDeptHead, (req, res) => {
+  const user = auth.currentUser(req);
+  const rows = db
+    .prepare(
+      `SELECT b.*, sl.slot_date, sl.start_time, sl.end_time,
+              e.name AS event_name, st.name AS teacher_name,
+              COALESCE(sc.label, c.name) AS with_whom, sc.location, c.room
+       FROM bookings b
+       JOIN slots sl      ON sl.id = b.slot_id
+       JOIN schedules sc  ON sc.id = b.schedule_id
+       JOIN events e      ON e.id = sc.event_id
+       LEFT JOIN staff st ON st.id = sc.staff_id
+       LEFT JOIN classes c ON c.id = sc.class_id
+       WHERE b.status != 'cancelled' AND e.campus_id = ?
+         AND (sc.department_id = ? OR (sc.department_id IS NULL AND st.department_id = ?))
+       ORDER BY sl.slot_date, sl.start_time, st.name`
+    )
+    .all(...departmentParams(user));
+
+  const csv = toCsv(rows, [
+    { label: 'Date', value: (r) => formatDate(r.slot_date) },
+    { label: 'Start', value: (r) => formatTime(r.start_time) },
+    { label: 'End', value: (r) => formatTime(r.end_time) },
+    { label: 'Event', value: 'event_name' },
+    { label: 'Teacher', value: 'teacher_name' },
+    { label: 'Class', value: 'with_whom' },
+    { label: 'Student', value: 'student_name' },
+    { label: 'Grade', value: 'student_grade' },
+    { label: 'Parent', value: 'parent_name' },
+    { label: 'Email', value: 'parent_email' },
+    { label: 'Phone', value: 'parent_phone' },
+    { label: 'Status', value: 'status' },
+  ]);
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="department-appointments.csv"');
+  res.send(csv);
+});
+
 /* ------------------------ one slot sheet --------------------------- */
 
 function loadSchedule(req, res, next) {
@@ -109,9 +233,7 @@ function loadSchedule(req, res, next) {
   if (!schedule) {
     return res.status(404).render('error', { title: 'Not found', status: 404, message: 'Schedule not found.' });
   }
-  const isOwner = schedule.staff_id === user.id;
-  const isAdmin = auth.ADMIN_ROLES.includes(user.role) && auth.canAccessCampus(user, schedule.campus_id);
-  if (!isOwner && !isAdmin) {
+  if (!auth.canManageSchedule(user, schedule)) {
     return res.status(403).render('error', { title: 'Not allowed', status: 403, message: 'That schedule belongs to another member of staff.' });
   }
   req.schedule = schedule;
@@ -196,11 +318,10 @@ router.post('/schedule/:id/slots', loadSchedule, (req, res) => {
 router.post('/slot/:slotId/:action', (req, res) => {
   const user = auth.currentUser(req);
   const slot = db
-    .prepare('SELECT sl.*, sc.staff_id, sc.id AS schedule_id, e.campus_id FROM slots sl JOIN schedules sc ON sc.id = sl.schedule_id JOIN events e ON e.id = sc.event_id WHERE sl.id = ?')
+    .prepare('SELECT sl.*, sc.id AS schedule_id FROM slots sl JOIN schedules sc ON sc.id = sl.schedule_id WHERE sl.id = ?')
     .get(Number(req.params.slotId));
   if (!slot) return res.status(404).send('Slot not found');
-  const allowed = slot.staff_id === user.id || (auth.ADMIN_ROLES.includes(user.role) && auth.canAccessCampus(user, slot.campus_id));
-  if (!allowed) return res.status(403).send('Not allowed');
+  if (!auth.canManageSchedule(user, sched.getSchedule(slot.schedule_id))) return res.status(403).send('Not allowed');
 
   const booked = db.prepare("SELECT COUNT(*) AS n FROM bookings WHERE slot_id = ? AND status = 'booked'").get(slot.id).n;
   const action = req.params.action;
@@ -239,8 +360,7 @@ router.post('/booking/:id/:action', (req, res) => {
   const booking = sched.bookingById(Number(req.params.id));
   if (!booking) return res.status(404).send('Booking not found');
   const schedule = sched.getSchedule(booking.schedule_id);
-  const allowed = schedule.staff_id === user.id || (auth.ADMIN_ROLES.includes(user.role) && auth.canAccessCampus(user, schedule.campus_id));
-  if (!allowed) return res.status(403).send('Not allowed');
+  if (!auth.canManageSchedule(user, schedule)) return res.status(403).send('Not allowed');
 
   const action = req.params.action;
   if (action === 'cancel') {

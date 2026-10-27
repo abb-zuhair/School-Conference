@@ -16,13 +16,30 @@
     <% if (basketCount) { %><a class="btn" href="/e/<%= event.slug %>/review"><%= basketCount %> selected — review</a><% } %>
   </div>
 
+  <% if (totalTeachers > 1) { %>
+    <form method="get" action="/e/<%= event.slug %>/d/<%= department ? department.id : 'none' %>" class="finder" id="teacher-finder">
+      <label class="sr-only" for="q">Search for a teacher</label>
+      <input id="q" name="q" type="search" value="<%= q %>" autocomplete="off"
+             placeholder="Search by teacher name or class — e.g. Sara, or Grade 5A">
+      <button class="btn ghost sm" type="submit">Search</button>
+      <% if (q) { %><a class="btn ghost sm" href="/e/<%= event.slug %>/d/<%= department ? department.id : 'none' %>">Clear</a><% } %>
+      <div class="hint" id="finder-count" aria-live="polite">
+        <% if (q) { %>
+          <%= teachers.length %> of <%= totalTeachers %> match “<%= q %>”.
+        <% } else { %>
+          <%= totalTeachers %> teachers in this department.
+        <% } %>
+      </div>
+    </form>
+  <% } %>
+
   <% if (event.allow_compare && teachers.length > 1) { %>
     <form method="get" action="/e/<%= event.slug %>/compare" id="compare-form">
       <p class="muted small">Tick two or more teachers to see their times side by side — handy when you want to line up one evening.</p>
       <div class="grid two">
         <% teachers.forEach(function (t) { %>
           <% t.schedules.forEach(function (s) { %>
-            <label class="check" style="background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px 14px">
+            <label class="check teacher-row" data-search="<%= t.search %>" style="background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px 14px">
               <input type="checkbox" name="sid" value="<%= s.id %>">
               <span>
                 <strong><%= s.display_name %></strong><br>
@@ -43,11 +60,22 @@
 </div>
 
 <% if (!teachers.length) { %>
-  <div class="alert info">No schedules have been published in this department yet.</div>
+  <div class="alert info">
+    <% if (q) { %>
+      No teacher in this department matches “<%= q %>”. Check the spelling, or
+      <a href="/e/<%= event.slug %>/d/<%= department ? department.id : 'none' %>">show everyone</a>.
+    <% } else { %>
+      No schedules have been published in this department yet.
+    <% } %>
+  </div>
 <% } %>
 
+<div id="no-match" class="alert info" hidden>
+  No teacher matches what you typed. Clear the box to see everyone again.
+</div>
+
 <% teachers.forEach(function (t) { %>
-  <div class="card">
+  <div class="card teacher-row" data-search="<%= t.search %>">
     <div class="card-head">
       <div>
         <h2><%= t.name %></h2>
@@ -80,6 +108,52 @@
 <% }); %>
 
 <script>
+  /* Live filtering. The page works without this — the form posts ?q= and the
+     server filters — but typing should narrow the list straight away. The
+     normalisation below mirrors searchKey() on the server, so both agree. */
+  (function () {
+    var form = document.getElementById('teacher-finder');
+    if (!form) return;
+    var box = document.getElementById('q');
+    var count = document.getElementById('finder-count');
+    var empty = document.getElementById('no-match');
+    var rows = Array.prototype.slice.call(document.querySelectorAll('.teacher-row'));
+    var cards = rows.filter(function (r) { return r.classList.contains('card'); });
+    var total = cards.length;
+
+    function key(s) {
+      return String(s == null ? '' : s)
+        .toLowerCase()
+        .replace(/[ً-ْٰ]/g, '')
+        .replace(/[آأإٱ]/g, 'ا')
+        .replace(/ة/g, 'ه')
+        .replace(/ى/g, 'ي')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    function apply() {
+      var needle = key(box.value);
+      var shown = 0;
+      rows.forEach(function (row) {
+        var hit = !needle || (row.getAttribute('data-search') || '').indexOf(needle) !== -1;
+        row.hidden = !hit;
+        if (hit && row.classList.contains('card')) shown += 1;
+      });
+      if (empty) empty.hidden = shown !== 0 || total === 0;
+      if (count) {
+        count.textContent = needle
+          ? shown + ' of ' + total + ' match “' + box.value.trim() + '”.'
+          : total + ' teachers in this department.';
+      }
+    }
+
+    box.addEventListener('input', apply);
+    // Enter should filter in place rather than reload the page.
+    form.addEventListener('submit', function (e) { e.preventDefault(); apply(); });
+    if (box.value) apply();
+  })();
+
   var cf = document.getElementById('compare-form');
   if (cf) cf.addEventListener('submit', function () {
     var ids = Array.prototype.slice.call(cf.querySelectorAll('input[name=sid]:checked')).map(function (i) { return i.value; });

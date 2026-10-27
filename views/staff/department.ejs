@@ -1,0 +1,80 @@
+<%- include('../partials/head') %>
+
+<div class="card">
+  <div class="card-head">
+    <div>
+      <h1><%= department ? department.name : 'My department' %></h1>
+      <div class="muted small">
+        Every teacher in your department. Open a sheet to add times, block a slot, cancel a booking or print the day.
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <a class="btn ghost sm" href="/staff">My own schedules</a>
+    <% if (totals.schedules) { %>
+      <a class="btn ghost sm" href="/staff/department/export.csv">Export CSV</a>
+    <% } %>
+  </div>
+
+  <% if (totals.schedules) { %>
+    <div class="btn-row" style="margin-top:4px">
+      <span class="badge"><%= totals.teachers %> teacher<%= totals.teachers === 1 ? '' : 's' %></span>
+      <span class="badge"><%= totals.schedules %> schedule<%= totals.schedules === 1 ? '' : 's' %></span>
+      <span class="badge ok"><%= totals.booked %> booked</span>
+      <span class="badge muted"><%= Math.max(0, totals.capacity - totals.booked) %> free</span>
+    </div>
+  <% } %>
+</div>
+
+<% if (!teachers.length) { %>
+  <div class="alert info">
+    Nothing to show yet. Schedules appear here once an administrator sets up an event that includes your department.
+  </div>
+<% } %>
+
+<% teachers.forEach(function (t) { %>
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <h2 style="margin:0"><%= t.name %></h2>
+        <div class="muted small">
+          <%= t.title || '' %><% if (t.title && t.email) { %> · <% } %><%= t.email || '' %>
+        </div>
+      </div>
+      <div class="spacer"></div>
+      <span class="badge ok"><%= t.booked %> booked</span>
+      <span class="badge muted"><%= Math.max(0, t.capacity - t.booked) %> free</span>
+    </div>
+
+    <div class="table-wrap">
+      <table class="data">
+        <thead>
+          <tr><th>Schedule</th><th>Event</th><th>Slots</th><th>Booked</th><th style="width:200px"></th></tr>
+        </thead>
+        <tbody>
+          <% t.schedules.forEach(function (s) { %>
+            <tr>
+              <td>
+                <a href="/staff/schedule/<%= s.id %>"><%= s.display_name %></a>
+                <% if (s.locked) { %> <span class="badge bad">Locked</span><% } %>
+              </td>
+              <td class="small">
+                <%= s.event_name %>
+                <% if (s.event_status !== 'published') { %> <span class="badge muted"><%= s.event_status %></span><% } %>
+              </td>
+              <td><%= s.stats.total_slots %></td>
+              <td><%= s.stats.booked %> / <%= s.stats.capacity %></td>
+              <td>
+                <div class="btn-row">
+                  <a class="btn sm" href="/staff/schedule/<%= s.id %>">Open</a>
+                  <a class="btn sm ghost" href="/staff/schedule/<%= s.id %>/print">Print</a>
+                </div>
+              </td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+<% }); %>
+
+<%- include('../partials/foot') %>

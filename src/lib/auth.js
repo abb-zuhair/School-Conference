@@ -3,8 +3,9 @@ const bcrypt = require('bcryptjs');
 const { db } = require('../db');
 const config = require('../config');
 
-const ROLES = ['admin', 'campus_admin', 'teacher', 'desk'];
+const ROLES = ['admin', 'campus_admin', 'dept_head', 'teacher', 'desk'];
 const ADMIN_ROLES = ['admin', 'campus_admin'];
+
 
 function hashPassword(plain) {
   return bcrypt.hashSync(String(plain), 12);
@@ -96,6 +97,39 @@ function canAccessCampus(user, campusId) {
   return scope === null || Number(scope) === Number(campusId);
 }
 
+/**
+ * A department head runs one department on one campus.
+ *
+ * A schedule belongs to that department if the schedule itself says so; when it
+ * says nothing, the owning teacher's department decides. That is the same rule
+ * the SQL in the staff routes uses, and the two must not drift apart.
+ */
+function headsThisSchedule(user, schedule) {
+  if (!user || user.role !== 'dept_head' || !user.department_id) return false;
+  if (!canAccessCampus(user, schedule.campus_id)) return false;
+  if (schedule.department_id) return Number(schedule.department_id) === Number(user.department_id);
+  if (!schedule.staff_id) return false;
+  const owner = findById(schedule.staff_id);
+  return Boolean(owner && Number(owner.department_id) === Number(user.department_id));
+}
+
+/**
+ * The one answer to "may this person change this schedule?" — its owner, an
+ * administrator over its campus, or the head of its department. Every route
+ * that touches a schedule, a slot or a booking asks this and nothing else.
+ */
+function canManageSchedule(user, schedule) {
+  if (!user || !schedule) return false;
+  if (schedule.staff_id && Number(schedule.staff_id) === Number(user.id)) return true;
+  if (ADMIN_ROLES.includes(user.role)) return canAccessCampus(user, schedule.campus_id);
+  return headsThisSchedule(user, schedule);
+}
+
+/** The department a head is confined to — null for everyone else. */
+function departmentScope(user) {
+  return user && user.role === 'dept_head' ? user.department_id || null : null;
+}
+
 function audit(staffId, action, detail) {
   try {
     db.prepare('INSERT INTO audit_log (staff_id, action, detail) VALUES (?, ?, ?)').run(
@@ -111,6 +145,9 @@ function audit(staffId, action, detail) {
 module.exports = {
   ROLES,
   ADMIN_ROLES,
+  canManageSchedule,
+  headsThisSchedule,
+  departmentScope,
   hashPassword,
   verifyPassword,
   findByEmail,

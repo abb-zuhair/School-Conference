@@ -17,6 +17,9 @@
       <a href="/lookup" class="<%= path === '/lookup' ? 'on' : '' %>">My appointments</a>
       <% if (user) { %>
         <% if (['admin','campus_admin'].includes(user.role)) { %><a href="/admin">Admin</a><% } %>
+        <% if (user.role === 'dept_head') { %>
+          <a href="/staff/department" class="<%= path.indexOf('/staff/department') === 0 ? 'on' : '' %>">My department</a>
+        <% } %>
         <a href="/staff">My schedules</a>
         <form method="post" action="/staff/logout" style="display:inline">
           <button class="btn sm ghost" type="submit">Sign out</button>

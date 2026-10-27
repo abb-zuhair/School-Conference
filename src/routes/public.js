@@ -4,6 +4,7 @@ const { db } = require('../db');
 const config = require('../config');
 const sched = require('../lib/scheduling');
 const { notifyAsync, notifyBookingGroupAsync, notifyStaff } = require('../services/notify');
+const h = require('../lib/helpers');
 const {
   isEmail,
   nowLocal,
@@ -12,7 +13,7 @@ const {
   EVENT_TYPES,
   MODES,
   toCsv,
-} = require('../lib/helpers');
+} = h;
 
 const router = express.Router();
 
@@ -178,16 +179,39 @@ router.get('/e/:slug/d/:deptId', loadEvent, (req, res) => {
   for (const s of schedules) {
     let t = teachers.find((x) => x.staff_id === s.staff_id && s.staff_id !== null);
     if (!t) {
-      t = { staff_id: s.staff_id, name: s.staff_name || s.label, title: s.staff_title, schedules: [] };
+      t = {
+        staff_id: s.staff_id,
+        name: s.staff_name || s.label,
+        name_ar: s.staff_name_ar,
+        title: s.staff_title,
+        schedules: [],
+      };
       teachers.push(t);
     }
     t.schedules.push(s);
   }
 
+  // Everything a parent might type to find their teacher: either spelling of the
+  // name, the job title, and the class names — a parent often knows "Grade 5A"
+  // and not who teaches it.
+  for (const t of teachers) {
+    t.search = h.searchKey(
+      [t.name, t.name_ar, t.title, ...t.schedules.map((s) => s.display_name), ...t.schedules.map((s) => s.class_name)]
+        .filter(Boolean)
+        .join(' ')
+    );
+  }
+
+  const q = String(req.query.q || '').trim();
+  const needle = h.searchKey(q);
+  const shown = needle ? teachers.filter((t) => t.search.includes(needle)) : teachers;
+
   res.render('public/event-teachers', {
     title: `${department ? department.name : 'Staff'} — ${event.name}`,
     department,
-    teachers,
+    teachers: shown,
+    totalTeachers: teachers.length,
+    q,
     basketCount: (req.session.basket && req.session.basket.eventId === event.id ? req.session.basket.slotIds.length : 0),
     window: sched.eventWindow(event),
   });

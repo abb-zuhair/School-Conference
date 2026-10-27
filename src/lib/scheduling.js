@@ -89,7 +89,7 @@ const SCHEDULE_SELECT = `
          e.name  AS event_name, e.type AS event_type, e.slug AS event_slug,
          e.status AS event_status, e.campus_id,
          c.name  AS class_name, c.grade_level, c.room,
-         st.name AS staff_name, st.email AS staff_email, st.title AS staff_title,
+         st.name AS staff_name, st.name_ar AS staff_name_ar, st.email AS staff_email, st.title AS staff_title,
          d.name  AS department_name,
          cp.name AS campus_name, cp.slug AS campus_slug
   FROM schedules s

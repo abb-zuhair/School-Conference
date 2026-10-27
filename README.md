@@ -40,9 +40,14 @@ locked schedules), cancellation and slot release, counter capacity, the teacher 
 the admin exports, and access control.
 
 ```bash
-npm run features   # CSV upload, compare toggle, department slot generation, back-ups
-npm run sso        # Entra sign-in against a mock login host — starts its own instance
+npm run features     # CSV upload, compare toggle, department slot generation, back-ups
+npm run department   # department-head permissions, both sides, and the teacher search
+npm run sso          # Entra sign-in against a mock login host — starts its own instance
+npm run messaging    # WhatsApp templates against a mock WATI host
 ```
+
+`npm run smoke`, `features` and `department` each want a freshly seeded database, so
+reset and reseed between them.
 
 `npm run sso` needs no Microsoft credentials: it runs a fake authority on port 3101 and
 walks the real redirect flow, including the rejections that matter — unknown account,
@@ -57,6 +62,7 @@ forged `state`.
 
 - Pick a campus, then an open event.
 - Conference events: browse **department → teacher → class**. Service events (uniform, registration) list the counters directly.
+- **Find a teacher by name.** A department with more than one teacher gets a search box: type a name or a class ("Sara", "Grade 5A") and the list narrows as you type. Arabic is matched the way people actually type it — ة and ه, أ and ا, and vowel marks all stop mattering, so "فاطمه" finds "فاطمة". It falls back to a plain `?q=` search when JavaScript is off.
 - **Side-by-side compare** — tick two or more teachers and see their evenings on one grid, so a family can line up back-to-back slots. Optional per event (**Offer the side-by-side comparison grid**); turn it off for single-desk events and both the button and the URL disappear.
 - Build a basket of times across several teachers and confirm once.
 - Confirmation by email + WhatsApp, each with a private manage link.
@@ -83,6 +89,16 @@ forged `state`.
 - **Lock the schedule** — freezes new sign-ups without touching existing bookings.
 - Block or delete individual slots, mark attended / no-show, cancel a booking (parent is notified).
 - Print a signature sheet, export bookings to CSV.
+
+### Department heads
+
+A `dept_head` account runs one department on one campus — set the person's **Department** on their staff record and give them that role.
+
+- **My department** in the top bar: every teacher in the department, their schedules, how full each one is, and a CSV of the whole department's appointments.
+- Opens any sheet in the department and works it exactly as its owner would — generate slots, block or delete one, lock the schedule, mark attended or no-show, cancel a booking, print the signature sheet.
+- A head is still a teacher: their own classes appear under **My schedules** as before.
+
+What a head cannot do is the point of the role. No other department, no other campus, and nothing under `/admin` — no events, no staff records, no CSV import, no messaging settings, no database download. A schedule counts as "in my department" when the schedule itself says so, or, when it names no department, when the teacher who owns it belongs to one. That rule lives in `auth.canManageSchedule`, which is the single check behind every schedule, slot and booking route; `npm run department` tests both sides of it.
 
 ### Administrators
 
@@ -295,12 +311,12 @@ src/
     session-store.js     express-session store on the same SQLite file
   lib/
     scheduling.js        slot generation, availability, booking rules, cancel
-    auth.js              roles, bcrypt, campus scoping, audit log
+    auth.js              roles, bcrypt, campus + department scoping, audit log
     helpers.js           timezone-aware dates, CSV, phone normalisation
     csv.js               RFC-4180 parser for the staff import
   routes/
     public.js            parent flow
-    staff.js             teacher portal
+    staff.js             teacher portal and the department-head view
     admin.js             admin console
   services/
     graph-mail.js        Microsoft Graph sendMail

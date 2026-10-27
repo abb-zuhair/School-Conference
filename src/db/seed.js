@@ -54,6 +54,7 @@ const seed = db.transaction(() => {
   const staffRows = [
     ['hawally', 'Elementary — English', 'Sara Al-Mutairi', 'sara.mutairi@example.aca.edu.kw', 'Grade 5 English', 'teacher', ['Grade 5A — English', 'Grade 5B — English']],
     ['hawally', 'Elementary — English', 'Laura Bennett', 'laura.bennett@example.aca.edu.kw', 'Grade 4 English', 'teacher', ['Grade 4A — English']],
+    ['hawally', 'Elementary — English', 'Huda Al-Ajmi', 'huda.ajmi@example.aca.edu.kw', 'Head of English', 'dept_head', ['Grade 6 — English']],
     ['hawally', 'Elementary — Mathematics', 'Ahmad Al-Rashidi', 'ahmad.rashidi@example.aca.edu.kw', 'Grade 5 Mathematics', 'teacher', ['Grade 5A — Mathematics', 'Grade 5B — Mathematics']],
     ['hawally', 'Elementary — Arabic & Islamic', 'Fatima Al-Otaibi', 'fatima.otaibi@example.aca.edu.kw', 'Arabic', 'teacher', ['Grade 5 — Arabic']],
     ['hawally', 'Front Office', 'Uniform Counter', 'uniform.hawally@example.aca.edu.kw', 'Uniform shop', 'desk', []],

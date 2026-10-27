@@ -30,7 +30,7 @@
     <div class="field">
       <label>Role</label>
       <select name="role">
-        <% roles.forEach(function (r) { %><option value="<%= r %>" <%= member.role === r ? 'selected' : '' %>><%= r %></option><% }); %>
+        <% roles.forEach(function (r) { %><option value="<%= r %>" <%= member.role === r ? 'selected' : '' %>><%= h.roleLabel(r) %></option><% }); %>
       </select>
     </div>
   </div>

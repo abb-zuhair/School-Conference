@@ -123,8 +123,55 @@ const MODES = {
   video: 'Video call',
 };
 
+/** Role names as people read them, not as the database stores them. */
+const ROLE_LABELS = {
+  admin: 'Administrator',
+  campus_admin: 'Campus administrator',
+  dept_head: 'Department head',
+  teacher: 'Teacher',
+  desk: 'Service desk',
+};
+
+/** One line on what each role may do — shown beside the role picker. */
+const ROLE_NOTES = {
+  admin: 'Everything, on every campus.',
+  campus_admin: 'Everything on their own campus.',
+  dept_head: 'Their own department: every teacher’s sheet, slots, bookings and prints. No events, staff or settings.',
+  teacher: 'Their own schedules only.',
+  desk: 'Their own counter’s schedules only.',
+};
+
+function roleLabel(role) {
+  return ROLE_LABELS[role] || role || '';
+}
+
+function roleNote(role) {
+  return ROLE_NOTES[role] || '';
+}
+
+/**
+ * Flattens a name for searching: case, Arabic vowel marks and the letter forms
+ * people type interchangeably all stop mattering, so "فاطمه" finds "فاطمة" and
+ * "ahmad" finds "Ahmad". The same rules are mirrored in the browser, so typing
+ * narrows the list exactly as the server would.
+ */
+function searchKey(value) {
+  return String(value == null ? '' : value)
+    .toLowerCase()
+    .replace(/[ً-ْٰ]/g, '')             // harakat and dagger alef
+    .replace(/[آأإٱ]/g, 'ا')  // آ أ إ ٱ → ا
+    .replace(/ة/g, 'ه')                      // ة → ه
+    .replace(/ى/g, 'ي')                      // ى → ي
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 module.exports = {
   TZ,
+  roleLabel,
+  roleNote,
+  ROLE_NOTES,
+  searchKey,
   token,
   slugify,
   nowLocal,
