@@ -467,6 +467,21 @@ async function follow(j, path) {
   r = await req(teacher, 'GET', '/admin/backup.db');
   check('teacher cannot download the backup', r.status === 403 || r.status === 302, `status ${r.status}`);
 
+  /* ---------------- the deploy script must stay plain ASCII ---------------- */
+  // Windows PowerShell reads a BOM-less file in the ANSI codepage, where the
+  // third byte of a UTF-8 em dash is a curly closing quote. The parser treats
+  // that as a string delimiter and the whole script falls apart, so a single
+  // typographic character pasted into deploy.ps1 breaks deployment.
+  const fs = require('fs');
+  const ps1 = fs.readFileSync(require('path').join(__dirname, '..', 'deploy.ps1'), 'latin1');
+  const offenders = [];
+  ps1.split('\n').forEach((text, i) => {
+    const bad = [...text].filter((ch) => ch.charCodeAt(0) > 127);
+    if (bad.length) offenders.push(`line ${i + 1}: ${bad.join(' ')}`);
+  });
+  check('deploy.ps1 is plain ASCII', offenders.length === 0, offenders.slice(0, 3).join('; '));
+  check('deploy.ps1 still has its quotes balanced', (ps1.match(/"/g) || []).length % 2 === 0);
+
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })().catch((err) => {
