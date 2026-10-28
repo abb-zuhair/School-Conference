@@ -796,6 +796,29 @@ router.post('/events/:id', loadEvent, (req, res) => {
   res.redirect(`/admin/events/${req.event.id}`);
 });
 
+/** Just the dates - so opening or closing bookings is one small form at the top of the page. */
+router.post('/events/:id/window', loadEvent, (req, res) => {
+  const stamp = (v) => {
+    const s = String(v || '').trim().replace('T', ' ');
+    return /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(s) ? s.slice(0, 16) : null;
+  };
+  const opens = stamp(req.body.opens_at);
+  const closes = stamp(req.body.closes_at);
+  if (opens && closes && closes <= opens) {
+    req.flash('error', 'Booking would close before it opens - check the two dates.');
+    return res.redirect(`/admin/events/${req.event.id}`);
+  }
+  db.prepare('UPDATE events SET opens_at = ?, closes_at = ? WHERE id = ?').run(opens, closes, req.event.id);
+  auth.audit(auth.currentUser(req).id, 'event_window', { eventId: req.event.id, opens, closes });
+  const w = sched.eventWindow({ ...req.event, opens_at: opens, closes_at: closes });
+  req.flash(
+    'success',
+    `Booking dates saved. ` +
+      (w.state === 'open' ? 'Parents can book now.' : w.state === 'not_yet' ? `Opens ${formatDate(w.opens)}.` : w.state === 'closed' ? 'Bookings are closed.' : 'Publish the event to let parents in.')
+  );
+  return res.redirect(`/admin/events/${req.event.id}`);
+});
+
 router.post('/events/:id/status', loadEvent, (req, res) => {
   const status = ['draft', 'published', 'closed', 'archived'].includes(req.body.status) ? req.body.status : 'draft';
   db.prepare('UPDATE events SET status = ? WHERE id = ?').run(status, req.event.id);
@@ -953,6 +976,47 @@ function cancelBookingsFor(where, id, actor, notifyParents) {
   void actor;
   return rows.length;
 }
+
+/**
+ * Move a schedule to another department on the same campus. Bookings are
+ * untouched - they point at the schedule, not the department - so the only
+ * things that change are where parents find it and which head manages it.
+ */
+router.post('/schedules/:id/move', (req, res) => {
+  const user = auth.currentUser(req);
+  const schedule = sched.getSchedule(Number(req.params.id));
+  if (!schedule) return res.redirect('/admin');
+  if (!auth.canAccessCampus(user, schedule.campus_id)) return res.status(403).send('Not allowed');
+  const back = `/admin/events/${schedule.event_id}`;
+
+  const deptId = Number(req.body.department_id) || null;
+  const dept = deptId ? db.prepare('SELECT * FROM departments WHERE id = ?').get(deptId) : null;
+  if (deptId && !dept) {
+    req.flash('error', 'That department no longer exists.');
+    return res.redirect(back);
+  }
+  if (dept && Number(dept.campus_id) !== Number(schedule.campus_id)) {
+    req.flash('error', `${dept.name} is on another campus. A schedule can only move within its event's campus.`);
+    return res.redirect(back);
+  }
+  if ((schedule.department_id || null) === deptId) {
+    req.flash('success', 'No change - it was already there.');
+    return res.redirect(back);
+  }
+
+  db.prepare('UPDATE schedules SET department_id = ? WHERE id = ?').run(deptId, schedule.id);
+  auth.audit(user.id, 'schedule_move', {
+    scheduleId: schedule.id,
+    from: schedule.department_id || null,
+    to: deptId,
+  });
+  req.flash(
+    'success',
+    `“${schedule.display_name}” moved to ${dept ? dept.name : 'no department'}. ` +
+      'Its bookings are untouched; parents now find it there, and that department’s head can manage it.'
+  );
+  return res.redirect(back);
+});
 
 router.post('/schedules/:id/delete', (req, res) => {
   const user = auth.currentUser(req);

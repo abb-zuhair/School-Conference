@@ -208,6 +208,60 @@ function refused(r) {
     check(`head cannot reach ${p}`, refused(res), `status ${res.status}`);
   }
 
+  /* ---------------- moving a schedule between departments ---------------- */
+  // Sara's second class goes to Mathematics. Parents should find it there, the
+  // Maths head should gain it, the English head should lose it, and the booking
+  // on it should not notice.
+  const admin = jar();
+  r = await req(admin, 'POST', '/staff/login', { email: process.env.ADMIN_EMAIL || 'zuhair@sama.com.kw', password: process.env.ADMIN_PASSWORD || 'Test1234!' });
+  if (r.status !== 302) r = await req(admin, 'POST', '/staff/login', { email: process.env.ADMIN_EMAIL || 'zuhair@sama.com.kw', password: 'AdminPass123' });
+  await req(admin, 'POST', '/staff/password', { new_password: 'AdminPass123', confirm_password: 'AdminPass123' });
+
+  const maths = db.prepare("SELECT id FROM departments WHERE name = 'Elementary — Mathematics'").get();
+  const english = db.prepare("SELECT id FROM departments WHERE name = 'Elementary — English'").get();
+  const moving = db
+    .prepare(
+      `SELECT s.id, s.event_id FROM schedules s JOIN staff st ON st.id = s.staff_id JOIN classes c ON c.id = s.class_id
+       WHERE st.email = ? AND c.name = 'Grade 5B — English'`
+    )
+    .get(TEACHER);
+  check('there is a schedule to move', Boolean(moving));
+  const movingSlot = db.prepare('SELECT id FROM slots WHERE schedule_id = ? AND blocked = 0 ORDER BY id DESC LIMIT 1').get(moving.id);
+  const held = db
+    .prepare(
+      `INSERT INTO bookings (slot_id, event_id, schedule_id, parent_name, parent_email, token, status)
+       VALUES (?, ?, ?, 'Move Parent', 'moveparent@example.com', ?, 'booked')`
+    )
+    .run(movingSlot.id, moving.event_id, moving.id, `move-dept-${Date.now()}`);
+
+  r = await req(admin, 'GET', `/admin/events/${moving.event_id}`);
+  check('the event page offers a department picker per schedule', r.text.includes(`/admin/schedules/${moving.id}/move`));
+
+  r = await req(admin, 'POST', `/admin/schedules/${moving.id}/move`, { department_id: String(maths.id) });
+  check('the move is accepted', r.status === 302, `status ${r.status}`);
+  check('the schedule now sits in Mathematics', db.prepare('SELECT department_id FROM schedules WHERE id = ?').get(moving.id).department_id === maths.id);
+  check('its booking is untouched', db.prepare('SELECT status FROM bookings WHERE id = ?').get(held.lastInsertRowid).status === 'booked');
+
+  r = await req(jar(), 'GET', `/e/ptc-term1-hawally/d/${maths.id}`);
+  check('parents now find it under Mathematics', r.text.includes('Grade 5B — English'));
+  r = await req(jar(), 'GET', `/e/ptc-term1-hawally/d/${english.id}`);
+  check('and no longer under English', !r.text.includes('Grade 5B — English'));
+
+  r = await req(head, 'GET', `/staff/schedule/${moving.id}`);
+  check('the English head can no longer open it', r.status === 403, `status ${r.status}`);
+  r = await req(head, 'GET', '/staff/department');
+  check('and it has left her department page', !r.text.includes('Grade 5B — English'));
+
+  // The other campus's department is refused.
+  const salmiya = db.prepare("SELECT d.id FROM departments d JOIN campuses c ON c.id = d.campus_id WHERE c.slug = 'salmiya' LIMIT 1").get();
+  r = await req(admin, 'POST', `/admin/schedules/${moving.id}/move`, { department_id: String(salmiya.id) });
+  check('a department on the other campus is refused', db.prepare('SELECT department_id FROM schedules WHERE id = ?').get(moving.id).department_id === maths.id);
+
+  // Put it back so the rest of the suite sees the seed as it was.
+  await req(admin, 'POST', `/admin/schedules/${moving.id}/move`, { department_id: String(english.id) });
+  r = await req(head, 'GET', `/staff/schedule/${moving.id}`);
+  check('moved back, the English head has it again', r.status === 200, `status ${r.status}`);
+
   /* ---------------- an ordinary teacher is unchanged ---------------- */
   const teacher = await signIn(TEACHER, 'SaraPass123');
   r = await req(teacher, 'GET', '/staff/department');

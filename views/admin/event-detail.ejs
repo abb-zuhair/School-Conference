@@ -41,6 +41,24 @@
       <% } else { %>Not visible to parents.<% } %>
     </span>
   </form>
+
+  <form method="post" action="/admin/events/<%= event.id %>/window" class="window-form">
+    <div class="field">
+      <label for="win_opens">Booking opens</label>
+      <input id="win_opens" name="opens_at" type="datetime-local" value="<%= (event.opens_at || '').replace(' ', 'T') %>">
+    </div>
+    <div class="field">
+      <label for="win_closes">Booking closes</label>
+      <input id="win_closes" name="closes_at" type="datetime-local" value="<%= (event.closes_at || '').replace(' ', 'T') %>">
+    </div>
+    <div class="field" style="align-self:flex-end">
+      <button class="btn sm" type="submit">Save dates</button>
+    </div>
+    <div class="hint" style="flex:1 0 100%">
+      Kuwait time. Leave <em>opens</em> blank to open as soon as the event is published; leave <em>closes</em> blank to stay open until you close it.
+      Changing these never touches existing bookings.
+    </div>
+  </form>
 </div>
 
 <% if (event.type === 'conference') { %>
@@ -111,7 +129,7 @@
 
 <form method="post" action="/admin/events/<%= event.id %>/slots/bulk" class="card">
   <h2>Generate slots across schedules</h2>
-  <p class="muted small">Roll the same pattern over every schedule you tick. Duplicate times are skipped, so this is safe to run again after adding a teacher.</p>
+  <p class="muted small">Roll the same pattern over every schedule you tick. Duplicate times are skipped, so this is safe to run again after adding a teacher. For <strong>one teacher only</strong>, use <em>Add slots</em> beside their schedule in the table below instead — or open a department here and tick just that one.</p>
 
   <div class="row">
     <div class="field"><label>Dates *</label><input name="dates" placeholder="2026-10-05, 2026-10-06" required><div class="hint">YYYY-MM-DD, comma separated.</div></div>
@@ -390,9 +408,24 @@
       <tbody>
         <% schedules.forEach(function (s) { %>
           <tr>
-            <td><a href="/staff/schedule/<%= s.id %>"><strong><%= s.display_name %></strong></a></td>
+            <td>
+              <a href="/staff/schedule/<%= s.id %>"><strong><%= s.display_name %></strong></a>
+              <div class="btn-row" style="margin-top:4px">
+                <a class="btn sm ghost" href="/staff/schedule/<%= s.id %>#add-slots">Add slots</a>
+              </div>
+            </td>
             <td class="small"><%= s.staff_name || '—' %></td>
-            <td class="small"><%= s.department_name || '—' %></td>
+            <td class="small">
+              <form method="post" action="/admin/schedules/<%= s.id %>/move" class="move-dept">
+                <select name="department_id" aria-label="Department for <%= s.display_name %>" onchange="this.form.submit()">
+                  <option value="" <%= s.department_id ? '' : 'selected' %>>— none —</option>
+                  <% departments.forEach(function (d) { %>
+                    <option value="<%= d.id %>" <%= s.department_id === d.id ? 'selected' : '' %>><%= d.name %></option>
+                  <% }); %>
+                </select>
+                <noscript><button class="btn sm ghost" type="submit">Move</button></noscript>
+              </form>
+            </td>
             <td><%= s.stats.total_slots %></td>
             <td><%= s.stats.booked %> <span class="muted small">/ <%= s.stats.capacity %></span></td>
             <td><% if (s.locked) { %><span class="badge bad">locked</span><% } else { %><span class="badge ok">open</span><% } %></td>

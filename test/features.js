@@ -480,6 +480,30 @@ async function follow(j, path) {
   r = await req(teacher, 'GET', '/admin/backup.db');
   check('teacher cannot download the backup', r.status === 403 || r.status === 302, `status ${r.status}`);
 
+  /* ---------------- booking window from the top of the event page ---------------- */
+  process.env.DATABASE_PATH = process.env.DATABASE_PATH || require('path').join(__dirname, '..', 'data', 'app.db');
+  const { db } = require('../src/db');
+  r = await req(a, 'GET', '/admin/events/1');
+  check('the event page has the booking-dates form up top', r.text.includes('action="/admin/events/1/window"'));
+  check('and an Add slots link per schedule', r.text.includes('#add-slots'));
+
+  r = await req(a, 'POST', '/admin/events/1/window', { opens_at: '2099-01-01T08:00', closes_at: '2099-01-10T20:00' });
+  check('dates save', r.status === 302);
+  let ev = db.prepare('SELECT opens_at, closes_at FROM events WHERE id = 1').get();
+  check('opens stored in Kuwait wall time', ev.opens_at === '2099-01-01 08:00', ev.opens_at);
+  r = await req(jar(), 'GET', '/e/ptc-term1-hawally');
+  check('parents now see the opening date', /opens on/i.test(r.text) && !r.text.includes('name="slot_id"'));
+
+  r = await req(a, 'POST', '/admin/events/1/window', { opens_at: '2099-01-10T08:00', closes_at: '2099-01-01T20:00' });
+  ev = db.prepare('SELECT opens_at FROM events WHERE id = 1').get();
+  check('closing before opening is refused', ev.opens_at === '2099-01-01 08:00');
+
+  r = await req(a, 'POST', '/admin/events/1/window', { opens_at: '', closes_at: '' });
+  ev = db.prepare('SELECT opens_at, closes_at FROM events WHERE id = 1').get();
+  check('blank dates reopen the event', ev.opens_at === null && ev.closes_at === null);
+  r = await req(jar(), 'GET', '/e/ptc-term1-hawally');
+  check('parents can book again', r.status === 200 && r.text.includes('/d/'));
+
   /* ---------------- the deploy script must stay plain ASCII ---------------- */
   // Windows PowerShell reads a BOM-less file in the ANSI codepage, where the
   // third byte of a UTF-8 em dash is a curly closing quote. The parser treats
