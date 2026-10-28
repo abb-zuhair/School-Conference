@@ -383,3 +383,6 @@ form.move-dept select { font: inherit; font-size: .85rem; padding: 5px 6px; bord
 .window-form { display: flex; flex-wrap: wrap; gap: 12px 18px; align-items: flex-start; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
 .window-form .field { margin: 0; }
 .window-form .hint { color: var(--muted); font-size: .8rem; }
+.picker-tools { align-items: center; }
+.picker-tools .picker-filter { flex: 1 1 220px; min-width: 160px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
+.picker-tools .picker-count { white-space: nowrap; }

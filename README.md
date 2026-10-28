@@ -46,6 +46,7 @@ npm run slots        # bulk slot delete/close/reopen/move, and the guards on the
 npm run family       # several children in one booking, and the two ways the rules scope
 npm run sso          # Entra sign-in against a mock login host — starts its own instance
 npm run messaging    # WhatsApp templates against a mock WATI host
+npm run email        # SMTP settings and teacher copies against a local SMTP sink
 ```
 
 `npm run smoke`, `features`, `department`, `slots` and `family` each want a freshly seeded
@@ -112,7 +113,7 @@ What a head cannot do is the point of the role. No other department, no other ca
 - Events of four types — conference, uniform, registration, other — each with its own instructions, open/close window and rules. The **booking opens / closes** dates sit at the top of the event page in their own small form, so opening or closing bookings is one change, not a trip through every setting; the full settings form lower down still has them too.
 - **Per-schedule controls in the Schedules table.** *Add slots* opens that one teacher's sheet at the slot generator, for when a single teacher needs times without touching the department. The *Department* dropdown on each row **moves the schedule** to another department on the same campus: bookings are untouched, parents find it under the new department, and that department's head takes over managing it (the English head loses it, the Maths head gains it — `npm run department` checks both directions).
 - **Create schedules from classes**: tick departments, get one slot sheet per class in one click.
-- **Bulk slot generation** — tick whole **departments** and every teacher in them gets the same pattern, or open a department and pick individual schedules. Safe to re-run after adding a teacher: duplicate times are skipped, and a department tick picks up schedules created since.
+- **Bulk slot generation** — tick whole **departments** and every teacher in them gets the same pattern, or tick **individual classes**, which are listed under each department with a filter box and a running count of what is ticked. Classes in one department can have different times: tick the first group and generate, then tick the next and generate again with the new times. Safe to re-run after adding a teacher: duplicate times are skipped, and a department tick picks up schedules created since.
 - **Bulk slot changes** (*Change or remove slots*, on the same page) — the other direction. Tick the same departments, optionally narrow to certain dates and a start-time window, then **delete** those slots, **close** them to new sign-ups, **reopen** them, or **move** them to another date or time. Leave the dates blank and it covers every slot those schedules hold in the event.
   - **Check what this matches** first: it reports how many slots and schedules the filter caught, how many hold bookings, and a line per date — read once, then cleared, so stale counts never sit beside a live delete button.
   - Deleting slots a family already holds needs an explicit tick and offers to notify the parents, like every other delete in the console. Closing a booked slot is skipped and reported rather than done quietly, because a closed slot the parent still holds is an appointment nobody can see.
@@ -174,21 +175,13 @@ Once someone has signed in, their Entra object id is stored, so changing their e
 | Sign-in worked, then stopped months later | The client secret expired. Create a new one and update `ENTRA_CLIENT_SECRET`. |
 | `AADSTS700016: application not found in the directory` | `ENTRA_TENANT_ID` or `ENTRA_CLIENT_ID` is wrong, or the app was registered in a different tenant. |
 
-### Email — Microsoft Graph (app-only)
+### Email — SMTP from the admin console, or Microsoft Graph
 
-1. Entra admin centre → **App registrations** → New registration.
-2. **API permissions** → Microsoft Graph → *Application* permissions → `Mail.Send` → **Grant admin consent**.
-3. **Certificates & secrets** → new client secret.
-4. Fill in `GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`, `GRAPH_CLIENT_SECRET`, and `GRAPH_SENDER` (a real mailbox, e.g. `noreply@aca.edu.kw`).
+**Admin → Email** takes a mail server: host, port, STARTTLS or TLS, username, a password that is stored and never shown again, and the sender address and name. It takes effect immediately, and a **Send a test** button records the attempt in the message log. Office 365 (`smtp.office365.com`, 587, an app password with *Authenticated SMTP* enabled on the mailbox) and Google Workspace (`smtp.gmail.com`, 587, an app password) are the usual choices; a relay on the school network works too, with certificate checking switched off if it presents one for a different name. A dedicated mailbox such as `appointments@aca.edu.kw` is better than a person's.
 
-`Mail.Send` as an application permission lets the app send as *any* mailbox in the tenant. Narrow it with an **application access policy** in Exchange Online so it can only send as the noreply mailbox:
+Microsoft Graph from the environment (`GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`, `GRAPH_CLIENT_SECRET`, `GRAPH_SENDER`) still works and needs no change; SMTP entered in the console takes over as soon as it is saved, and clearing it hands back to Graph. With neither, bookings still go through and every email is logged as `skipped`.
 
-```powershell
-New-ApplicationAccessPolicy -AppId <client-id> -PolicyScopeGroupId noreply@aca.edu.kw `
-  -AccessRight RestrictAccess -Description "ACA Appointments sender"
-```
-
-Leave the Graph variables blank and email is skipped cleanly — the booking still works and the message log records it as `skipped`.
+**Who is told.** Parents always: confirmation, cancellation, a moved appointment, and the reminder. Teachers get a copy when a parent books (student, phone, the parent's note) and when a parent or the office cancels — never for a cancellation they made themselves; a department head cancelling on a colleague's sheet counts as the office. Both teacher copies have a switch on the Email page. `npm run email` proves all of this against a local SMTP sink.
 
 ### WhatsApp — WATI
 

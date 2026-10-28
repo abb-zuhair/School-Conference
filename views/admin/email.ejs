@@ -1,0 +1,154 @@
+<%- include('../partials/head') %>
+<%- include('../partials/admin-nav') %>
+
+<div class="card">
+  <div class="card-head">
+    <div>
+      <h1>Email</h1>
+      <div class="muted small">
+        Parents get an email for every booking, cancellation and move; teachers get a copy when a parent books or cancels.
+        Enter your mail server here and it takes effect immediately — no redeploy.
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <span class="badge <%= cfg.enabled ? 'ok' : 'muted' %>"><%= cfg.provider === 'smtp' ? 'SMTP' : cfg.provider === 'graph' ? 'Microsoft Graph' : 'Not configured' %></span>
+  </div>
+
+  <% if (cfg.provider === 'smtp') { %>
+    <div class="alert success" style="margin-bottom:0">
+      Sending through <span class="mono"><%= cfg.smtp.host %>:<%= cfg.smtp.port %></span> as
+      <strong><%= cfg.smtp.fromName %></strong> &lt;<span class="mono"><%= cfg.smtp.from %></span>&gt;.
+    </div>
+  <% } else if (cfg.provider === 'graph') { %>
+    <div class="alert info" style="margin-bottom:0">
+      Sending through Microsoft Graph as <span class="mono"><%= graphSender %></span>, from the environment variables.
+      Fill in the SMTP form to use a mail server instead — it takes over as soon as it is saved.
+    </div>
+  <% } else { %>
+    <div class="alert info" style="margin-bottom:0">
+      Email is off. Bookings still work and WhatsApp still goes out — every email is recorded as
+      <span class="mono">skipped</span> in the message log until a server is set.
+    </div>
+  <% } %>
+</div>
+
+<% if (typeof result !== 'undefined' && result) { %>
+  <div class="card tight">
+    <div class="alert <%= result.status === 'sent' ? 'success' : result.status === 'skipped' ? 'info' : 'error' %>" style="margin-bottom:0">
+      <strong>Test <%= result.status %>.</strong> <%= result.detail %>
+    </div>
+  </div>
+<% } %>
+
+<form method="post" action="/admin/email" class="card">
+  <h2>Mail server (SMTP)</h2>
+  <div class="row">
+    <div class="field">
+      <label for="host">Server *</label>
+      <input id="host" name="host" value="<%= fromForm.host %>" placeholder="smtp.office365.com">
+      <div class="hint">Office 365: <span class="mono">smtp.office365.com</span> · Gmail / Google Workspace: <span class="mono">smtp.gmail.com</span></div>
+    </div>
+    <div class="field">
+      <label for="port">Port</label>
+      <input id="port" name="port" value="<%= fromForm.port %>" placeholder="587" inputmode="numeric">
+      <div class="hint">587 with STARTTLS is usual. 465 is for servers that want TLS from the first byte.</div>
+    </div>
+  </div>
+  <div class="row">
+    <div class="field">
+      <label class="check"><input type="checkbox" name="secure" value="1" <%= fromForm.secure ? 'checked' : '' %>>
+        <span>Encrypted from the start (port 465). Leave off for 587.</span></label>
+    </div>
+    <div class="field">
+      <label class="check"><input type="checkbox" name="verify_tls" value="1" <%= fromForm.verify_tls ? 'checked' : '' %>>
+        <span>Check the server's certificate. Turn off only for a relay inside the school network.</span></label>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <label for="user">Username</label>
+      <input id="user" name="user" value="<%= fromForm.user %>" autocomplete="off" placeholder="appointments@aca.edu.kw">
+      <div class="hint">Usually the full mailbox address. Leave blank for a relay that needs no sign-in.</div>
+    </div>
+    <div class="field">
+      <label for="password">Password <%= passwordSet ? '' : '' %></label>
+      <input id="password" name="password" type="password" autocomplete="new-password"
+             placeholder="<%= passwordSet ? 'Stored — leave blank to keep it' : 'Mailbox or app password' %>">
+      <div class="hint">
+        Stored in the application database, never shown again.
+        Office 365 and Gmail usually need an <em>app password</em>, not the normal sign-in one.
+        <% if (passwordSet) { %>
+          <label class="check" style="margin-top:8px"><input type="checkbox" name="clear_password" value="1"><span>Remove the stored password</span></label>
+        <% } %>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <label for="from">Send from *</label>
+      <input id="from" name="from" value="<%= fromForm.from %>" placeholder="appointments@aca.edu.kw">
+      <div class="hint">What parents see as the sender. Most servers insist it matches the username's mailbox.</div>
+    </div>
+    <div class="field">
+      <label for="from_name">Sender name</label>
+      <input id="from_name" name="from_name" value="<%= fromForm.from_name %>" placeholder="<%= config.schoolName %>">
+    </div>
+  </div>
+
+  <h2 style="margin-top:22px">Who is told</h2>
+  <p class="muted small">Parents are always emailed. These control the teacher's copy.</p>
+  <label class="check"><input type="checkbox" name="teacher_on_booking" value="1" <%= fromForm.teacher_on_booking ? 'checked' : '' %>>
+    <span><strong>Teacher gets a copy when a parent books</strong> — with the student, the parent's phone and their note.</span></label>
+  <label class="check" style="margin-top:6px"><input type="checkbox" name="teacher_on_cancel" value="1" <%= fromForm.teacher_on_cancel ? 'checked' : '' %>>
+    <span><strong>Teacher is told when a parent or the office cancels</strong> — never for a cancellation they made themselves.</span></label>
+
+  <div class="btn-row" style="margin-top:18px">
+    <button class="btn" type="submit">Save settings</button>
+    <% if (fromForm.host) { %>
+      <label class="check" style="margin-left:12px"><input type="checkbox" name="clear_smtp" value="1"><span>Clear the SMTP settings</span></label>
+    <% } %>
+  </div>
+</form>
+
+<form method="post" action="/admin/email/test" class="card">
+  <h2>Send a test</h2>
+  <p class="muted small">Sends one real email with the current settings and records the attempt in the message log.</p>
+  <div class="row">
+    <div class="field">
+      <label for="test_to">Send to</label>
+      <input id="test_to" name="test_to" type="email" value="<%= testTo %>">
+    </div>
+  </div>
+  <div class="btn-row"><button class="btn ghost" type="submit">Send test email</button></div>
+</form>
+
+<div class="card">
+  <h2>Setting up a mailbox</h2>
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th style="width:170px">Service</th><th>Server</th><th>Port</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Microsoft 365</td><td class="mono">smtp.office365.com</td><td>587</td>
+          <td class="small">Username is the mailbox address. The mailbox needs <em>Authenticated SMTP</em> enabled in the Microsoft 365 admin centre (Users → the mailbox → Mail → Manage email apps). With MFA on, use an app password.</td>
+        </tr>
+        <tr>
+          <td>Google Workspace / Gmail</td><td class="mono">smtp.gmail.com</td><td>587</td>
+          <td class="small">Turn on 2-step verification for the account, then create an <em>App password</em> and use that here.</td>
+        </tr>
+        <tr>
+          <td>A relay on the school network</td><td class="small">its address</td><td>25 or 587</td>
+          <td class="small">Often no username. If it presents a certificate for a different name, untick <em>Check the server's certificate</em>.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="muted small" style="margin-top:10px">
+    A dedicated mailbox such as <span class="mono">appointments@aca.edu.kw</span> is better than a person's: replies from parents land somewhere the office watches, and nobody's password change breaks the system.
+  </p>
+  <div class="btn-row" style="margin-top:10px"><a class="btn ghost sm" href="/admin/notifications">Open the message log</a></div>
+</div>
+
+<%- include('../partials/foot') %>

@@ -21,7 +21,8 @@
     "messaging": "node test/messaging.js",
     "department": "node test/department.js",
     "slots": "node test/slots.js",
-    "family": "node test/family.js"
+    "family": "node test/family.js",
+    "email": "node test/email.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -32,8 +33,12 @@
     "express-session": "^1.18.1",
     "luxon": "^3.5.0",
     "multer": "^2.4.0",
-    "node-cron": "^3.0.3"
+    "node-cron": "^3.0.3",
+    "nodemailer": "^6.10.1"
   },
   "license": "UNLICENSED",
-  "private": true
+  "private": true,
+  "devDependencies": {
+    "smtp-server": "^3.21.1"
+  }
 }

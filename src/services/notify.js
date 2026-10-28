@@ -1,7 +1,8 @@
 'use strict';
 const { db } = require('../db');
 const config = require('../config');
-const { sendMail } = require('./graph-mail');
+const mail = require('./mail');
+const { sendMail } = mail;
 const wati = require('./wati');
 
 const { sendTemplate } = wati;
@@ -176,6 +177,7 @@ function whatsappParams(b) {
 async function notify(booking, kind) {
   if (!booking) return;
   const tasks = [];
+  if (kind === 'cancellation') tasks.push(notifyStaffCancelled(booking));
 
   const builder = EMAIL_BUILDERS[kind];
   if (builder && booking.parent_email) {
@@ -283,8 +285,10 @@ function notifyBookingGroupAsync(bookings) {
 
 /** Copy of the booking sheet for the teacher, sent when a parent books. */
 async function notifyStaff(booking) {
-  if (!booking || !booking.staff_email || !config.graph.enabled) return;
-  const mail = {
+  if (!booking || !booking.staff_email) return;
+  const cfg = mail.current();
+  if (!cfg.enabled || !cfg.teacherOnBooking) return;
+  const msg = {
     to: booking.staff_email,
     subject: `New booking: ${booking.parent_name} — ${formatDate(booking.slot_date)} ${formatTime(booking.start_time)}`,
     html: shell(
@@ -296,10 +300,38 @@ async function notifyStaff(booking) {
     ),
   };
   try {
-    const r = await sendMail(mail);
+    const r = await sendMail(msg);
     log(booking.id, 'email', 'staff_copy', booking.staff_email, r.status, r.detail);
   } catch (err) {
     log(booking.id, 'email', 'staff_copy', booking.staff_email, 'failed', err.message);
+  }
+}
+
+/**
+ * The teacher's copy of a cancellation. Only when someone else cancelled -
+ * a teacher who pressed Cancel on their own sheet does not need telling.
+ */
+async function notifyStaffCancelled(booking) {
+  if (!booking || !booking.staff_email) return;
+  if (booking.cancelled_by === 'staff') return;
+  const cfg = mail.current();
+  if (!cfg.enabled || !cfg.teacherOnCancel) return;
+  const by = booking.cancelled_by === 'admin' ? 'the office' : 'the parent';
+  const msg = {
+    to: booking.staff_email,
+    subject: `Cancelled: ${booking.parent_name} — ${formatDate(booking.slot_date)} ${formatTime(booking.start_time)}`,
+    html: shell(
+      'Appointment cancelled',
+      `<p style="margin:0 0 16px;font-size:15px">This appointment on your schedule was cancelled by ${by}. The time is free again for another family.</p>
+       ${detailTable(booking)}
+       <p style="margin:18px 0 0"><a href="${config.baseUrl}/staff" style="color:#0b3d5c">Open your schedule</a></p>`
+    ),
+  };
+  try {
+    const r = await sendMail(msg);
+    log(booking.id, 'email', 'staff_cancel', booking.staff_email, r.status, r.detail);
+  } catch (err) {
+    log(booking.id, 'email', 'staff_cancel', booking.staff_email, 'failed', err.message);
   }
 }
 
@@ -311,6 +343,7 @@ module.exports = {
   summaryParams,
   summaryLine,
   notifyStaff,
+  notifyStaffCancelled,
   log,
   whereLine,
   withWhom,

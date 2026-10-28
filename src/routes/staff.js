@@ -364,7 +364,10 @@ router.post('/booking/:id/:action', (req, res) => {
 
   const action = req.params.action;
   if (action === 'cancel') {
-    sched.cancelBooking(booking.id, auth.ADMIN_ROLES.includes(user.role) ? 'admin' : 'staff');
+    // 'staff' means the sheet's own teacher did it; anyone else - an admin or a
+    // department head - counts as the office, so the teacher gets told.
+    const own = Number(schedule.staff_id) === Number(user.id);
+    sched.cancelBooking(booking.id, own ? 'staff' : 'admin');
     const updated = sched.bookingById(booking.id);
     notifyAsync(updated, 'cancellation');
     auth.audit(user.id, 'booking_cancel', { bookingId: booking.id });

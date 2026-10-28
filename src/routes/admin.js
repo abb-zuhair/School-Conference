@@ -1715,6 +1715,106 @@ router.post('/messaging/test', auth.requireRole('admin'), async (req, res) => {
   res.render('admin/messaging', messagingView(req, { result, testPhone: phone, testTemplate: template }));
 });
 
+/* ------------------------------ email ------------------------------- *
+ * SMTP details entered here beat the Graph settings in the environment, and
+ * take effect immediately. The password is stored, never shown again.
+ * ------------------------------------------------------------------- */
+
+function emailView(req, extra = {}) {
+  const mail = require('../services/mail');
+  const cfg = mail.current();
+  const passwordSet = Boolean(cfg.smtp.password);
+  return {
+    title: 'Email',
+    cfg,
+    passwordSet,
+    fromForm: {
+      host: settings.get(mail.KEYS.host, ''),
+      port: settings.get(mail.KEYS.port, ''),
+      secure: settings.getBool(mail.KEYS.secure, false),
+      verify_tls: settings.getBool('mail.verify_tls', true),
+      user: settings.get(mail.KEYS.user, ''),
+      from: settings.get(mail.KEYS.from, ''),
+      from_name: settings.get(mail.KEYS.fromName, ''),
+      teacher_on_booking: cfg.teacherOnBooking,
+      teacher_on_cancel: cfg.teacherOnCancel,
+    },
+    graphSender: config.graph.enabled ? config.graph.sender : '',
+    result: null,
+    testTo: auth.currentUser(req).email,
+    ...extra,
+  };
+}
+
+router.get('/email', auth.requireRole('admin'), (req, res) => {
+  res.render('admin/email', emailView(req));
+});
+
+router.post('/email', auth.requireRole('admin'), (req, res) => {
+  const mail = require('../services/mail');
+  const port = String(req.body.port || '').replace(/\D/g, '');
+  const pairs = {
+    [mail.KEYS.host]: String(req.body.host || '').trim(),
+    [mail.KEYS.port]: port,
+    [mail.KEYS.secure]: asBool(req.body.secure) ? '1' : '0',
+    'mail.verify_tls': asBool(req.body.verify_tls) ? '1' : '0',
+    [mail.KEYS.user]: String(req.body.user || '').trim(),
+    [mail.KEYS.from]: String(req.body.from || '').trim(),
+    [mail.KEYS.fromName]: String(req.body.from_name || '').trim(),
+    [mail.KEYS.teacherOnBooking]: asBool(req.body.teacher_on_booking) ? '1' : '0',
+    [mail.KEYS.teacherOnCancel]: asBool(req.body.teacher_on_cancel) ? '1' : '0',
+  };
+  // An empty password box means "keep the stored one".
+  const password = String(req.body.password || '');
+  if (password) pairs[mail.KEYS.password] = password;
+  if (asBool(req.body.clear_password)) pairs[mail.KEYS.password] = '';
+  if (asBool(req.body.clear_smtp)) {
+    for (const k of [mail.KEYS.host, mail.KEYS.port, mail.KEYS.user, mail.KEYS.password, mail.KEYS.from, mail.KEYS.fromName]) pairs[k] = '';
+  }
+
+  settings.setMany(pairs);
+  mail.reset();
+  auth.audit(auth.currentUser(req).id, 'email_settings', {
+    host: pairs[mail.KEYS.host] || null,
+    passwordChanged: Boolean(password) || asBool(req.body.clear_password),
+  });
+  const now = mail.current();
+  req.flash(
+    'success',
+    now.provider === 'smtp'
+      ? `Email settings saved. Sending through ${now.smtp.host} as ${now.smtp.from}.`
+      : now.provider === 'graph'
+        ? 'SMTP cleared. Email goes through Microsoft Graph from the environment again.'
+        : 'Saved. Email is off until a server and a sender address are set.'
+  );
+  return res.redirect('/admin/email');
+});
+
+router.post('/email/test', auth.requireRole('admin'), async (req, res) => {
+  const mail = require('../services/mail');
+  const { log } = require('../services/notify');
+  const to = String(req.body.test_to || '').trim();
+  const cfg = mail.current();
+  let result;
+  if (!to) {
+    result = { status: 'failed', detail: 'Enter an address to send the test to.' };
+  } else if (!cfg.enabled) {
+    result = { status: 'failed', detail: 'Set the server and the sender address first.' };
+  } else {
+    try {
+      result = await mail.sendMail({
+        to,
+        subject: `Test from ${config.schoolName} appointments`,
+        html: `<p style="font-family:Arial,sans-serif">This is a test message from the appointment system at ${config.baseUrl}. If you can read it, email is working.</p>`,
+      });
+    } catch (err) {
+      result = { status: 'failed', detail: err.message };
+    }
+    log(null, 'email', 'test', to, result.status, result.detail);
+  }
+  res.render('admin/email', emailView(req, { result, testTo: to }));
+});
+
 /* ------------------------- SSO diagnostics -------------------------- */
 
 /** Shows exactly what the app will send to Microsoft, so an AADSTS code can be traced. */

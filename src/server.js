@@ -97,7 +97,8 @@ let shuttingDown = false;
 const server = app.listen(config.port, () => {
   console.log(`${config.schoolName} appointments running on http://localhost:${config.port}`);
   console.log(`  base URL : ${config.baseUrl}`);
-  console.log(`  email    : ${config.graph.enabled ? 'Microsoft Graph enabled' : 'disabled (set GRAPH_* in .env)'}`);
+  const mailCfg = require('./services/mail').current();
+  console.log(`  email    : ${mailCfg.provider === 'smtp' ? `SMTP via ${mailCfg.smtp.host} (admin console)` : mailCfg.provider === 'graph' ? 'Microsoft Graph (env)' : 'disabled (set it at /admin/email)'}`);
   console.log(`  whatsapp : ${config.wati.enabled ? 'WATI enabled' : 'disabled (set WATI_* in .env)'}`);
   if (config.entra.enabled) {
     const check = require('./services/entra-sso').diagnose();
