@@ -87,7 +87,37 @@ async function installOverlay(page, state) {
 const state = { x: 450, y: 280, caption: null };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function caption(page, n, en, ar) {
+/* ----------------------------- narration ---------------------------- *
+ * The spoken lines are synthesised beforehand (voice/*.wav) and mixed in
+ * afterwards. All the recording has to do is give each line room: a step
+ * never ends before its line has been said, and the moment each line should
+ * start is written to voice/cues-<lang>.json for the mix.
+ * -------------------------------------------------------------------- */
+const LANG = process.argv[2] || 'en';
+const DUR = JSON.parse(fs.readFileSync(path.join(__dirname, 'voice', 'durations.json'), 'utf8'))[LANG] || {};
+let t0 = Date.now();
+const cues = [];
+let lastCue = null;
+const now = () => (Date.now() - t0) / 1000;
+function cue(key) {
+  if (!key || !(key in DUR)) return;
+  lastCue = { key, t: Number(now().toFixed(2)) };
+  cues.push(lastCue);
+}
+/** Wait until the line that is playing has finished (plus a breath). */
+async function finishSpeech(extra = 0.35) {
+  if (!lastCue) return;
+  const wait = lastCue.t + DUR[lastCue.key] + extra - now();
+  if (wait > 0) await sleep(wait * 1000);
+}
+/** Sleep at least `ms`, and in any case until the current line is done. */
+async function hold(ms) {
+  await sleep(ms);
+  await finishSpeech();
+}
+
+async function caption(page, n, en, ar, key) {
+  await finishSpeech();
   state.caption = { n, en, ar };
   await page.evaluate((cap) => {
     const el = document.getElementById('v-cap');
@@ -100,12 +130,17 @@ async function caption(page, n, en, ar) {
       el.classList.add('show');
     }, 250);
   }, state.caption);
-  await sleep(500);
+  await sleep(300);
+  cue(key);
+  await sleep(200);
 }
 
-async function card(page, html, ms) {
+async function card(page, html, ms, key) {
+  await finishSpeech();
   await page.evaluate((h) => { const el = document.getElementById('v-card'); el.innerHTML = h; el.classList.add('show'); }, html);
-  await sleep(ms);
+  await sleep(400);
+  cue(key);
+  await hold(ms);
   await page.evaluate(() => document.getElementById('v-card').classList.remove('show'));
   await sleep(450);
 }
@@ -147,7 +182,6 @@ async function typeSlowly(page, selector, text) {
 /* ------------------------------- run -------------------------------- */
 
 (async () => {
-  fs.rmSync(OUT, { recursive: true, force: true });
   fs.mkdirSync(OUT, { recursive: true });
 
   const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
@@ -159,6 +193,7 @@ async function typeSlowly(page, selector, text) {
     recordVideo: { dir: OUT, size: { width: W, height: H } },
   });
   const page = await ctx.newPage();
+  t0 = Date.now();
 
   await page.goto(`${B}/`);
   await arrived(page);
@@ -168,22 +203,22 @@ async function typeSlowly(page, selector, text) {
     <div class="mark">ACA</div>
     <h1>Book a parent–teacher meeting</h1>
     <h2>احجز موعد لقاء المعلّم</h2>
-    <p>Two minutes. No account needed.  ·  دقيقتان، بلا حساب.</p>`, 3200);
+    <p>Two minutes. No account needed.  ·  دقيقتان، بلا حساب.</p>`, 3200, 'title');
 
   // 1 · the conference, under your campus
-  await caption(page, '1', 'Tap the conference', 'اضغط على اللقاء');
-  await sleep(1200);
+  await caption(page, '1', 'Tap the conference', 'اضغط على اللقاء', 's1');
+  await hold(1200);
   await go(page, 'main a.tile[href="/e/ptc-term1-hawally"]');
   await arrived(page);
 
   // 2 · department
-  await caption(page, '2', 'Choose the department', 'اختر القسم');
-  await sleep(900);
+  await caption(page, '2', 'Choose the department', 'اختر القسم', 's2');
+  await hold(900);
   await go(page, 'main a[href^="/e/ptc-term1-hawally/d/"]');
   await arrived(page);
 
   // 4 · find the teacher
-  await caption(page, '3', 'Type the teacher\'s name', 'اكتب اسم المعلّم');
+  await caption(page, '3', 'Type the teacher\'s name', 'اكتب اسم المعلّم', 's3');
   await sleep(500);
   await typeSlowly(page, '#q', 'Sara');
   await sleep(700);
@@ -191,13 +226,13 @@ async function typeSlowly(page, selector, text) {
   await arrived(page);
 
   // 5 · pick a time -> asks for the child
-  await caption(page, '4', 'Tap a free time', 'اضغط على وقت متاح');
-  await sleep(900);
+  await caption(page, '4', 'Tap a free time', 'اضغط على وقت متاح', 's4');
+  await hold(900);
   await go(page, '.slot form button[type=submit]', { nth: 2 });
   await arrived(page);
 
   // 6 · child's name
-  await caption(page, '5', 'Enter your child\'s name', 'أدخل اسم طفلك');
+  await caption(page, '5', 'Enter your child\'s name', 'أدخل اسم طفلك', 's5');
   await sleep(500);
   await typeSlowly(page, '#student_name', 'Ahmed Al-Fahad');
   await typeSlowly(page, '#student_grade', 'Grade 5A');
@@ -205,36 +240,36 @@ async function typeSlowly(page, selector, text) {
   await arrived(page);
 
   // back on the picker: selected
-  await caption(page, '', 'Your time is selected ✓', 'تم اختيار الوقت ✓');
+  await caption(page, '', 'Your time is selected ✓', 'تم اختيار الوقت ✓', 'selected');
   await sleep(1800);
-  await caption(page, '', 'More children? Press “Another child”', 'لديك طفل آخر؟ اضغط «Another child»');
+  await caption(page, '', 'More children? Press “Another child”', 'لديك طفل آخر؟ اضغط «Another child»', null);
   await page.evaluate(() => { const a = document.querySelector('.for-child a'); if (a) a.style.boxShadow = '0 0 0 4px #C8922A'; });
-  await sleep(2200);
+  await hold(2200);
   await page.evaluate(() => { const a = document.querySelector('.for-child a'); if (a) a.style.boxShadow = ''; });
 
   // 7 · review
-  await caption(page, '6', 'Press “Review & confirm”', 'اضغط «Review & confirm»');
-  await sleep(700);
+  await caption(page, '6', 'Press “Review & confirm”', 'اضغط «Review & confirm»', 's6');
+  await hold(700);
   await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
   await sleep(300);
   await go(page, 'a.btn[href$="/review"]', { noScroll: true });
   await arrived(page);
 
   // 8 · details
-  await caption(page, '7', 'Enter your name, email and mobile', 'أدخل اسمك وبريدك ورقم هاتفك');
+  await caption(page, '7', 'Enter your name, email and mobile', 'أدخل اسمك وبريدك ورقم هاتفك', 's7');
   await sleep(500);
   await typeSlowly(page, '#parent_name', 'Mariam Al-Fahad');
   await typeSlowly(page, '#parent_email', 'mariam@example.com');
   await typeSlowly(page, '#parent_phone', '99123456');
 
   // 9 · confirm
-  await caption(page, '8', 'Press Confirm', 'اضغط Confirm');
-  await sleep(600);
+  await caption(page, '8', 'Press Confirm', 'اضغط Confirm', 's8');
+  await hold(600);
   await go(page, 'form[action$="/confirm"] button[type=submit]');
   await arrived(page);
 
-  await caption(page, '✓', 'Done — check email & WhatsApp', 'تم — تحقّق من بريدك وواتساب');
-  await sleep(3200);
+  await caption(page, '✓', 'Done — check email & WhatsApp', 'تم — تحقّق من بريدك وواتساب', 'done');
+  await hold(3200);
 
   // End card
   await card(page, `
@@ -242,13 +277,14 @@ async function typeSlowly(page, selector, text) {
     <h1>That's it</h1>
     <h2>هذا كل شيء</h2>
     <p>Each appointment has its own link to cancel.  ·  لكل موعد رابط خاص للإلغاء.</p>
-    <div class="url">appointments.aca.edu.kw</div>`, 3600);
+    <div class="url">appointments.aca.edu.kw</div>`, 3600, 'end');
 
   const video = page.video();
   await page.close();
   await ctx.close();
-  const finalPath = path.join(OUT, 'booking.webm');
+  const finalPath = path.join(OUT, `booking-${LANG}.webm`);
   await video.saveAs(finalPath);
   await browser.close();
-  console.log('recorded', finalPath, fs.statSync(finalPath).size, 'bytes');
+  fs.writeFileSync(path.join(__dirname, 'voice', `cues-${LANG}.json`), JSON.stringify(cues, null, 1));
+  console.log('recorded', finalPath, fs.statSync(finalPath).size, 'bytes;', cues.length, 'cues');
 })().catch((e) => { console.error(e); process.exit(1); });

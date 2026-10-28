@@ -10,3 +10,6 @@ npm-debug.log*
 docs/guides/shots/
 docs/guides/out/
 docs/guides/raw/
+docs/guides/voice/*.wav
+docs/guides/voice/durations.json
+docs/guides/voice/cues-*.json

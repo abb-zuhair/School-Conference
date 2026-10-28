@@ -1,0 +1,38 @@
+{
+ "en": {
+  "voice": "mb-en1",
+  "speed": 150,
+  "lines": {
+   "title": "Booking a parent teacher meeting takes two minutes. No account is needed.",
+   "s1": "Tap the conference under your campus.",
+   "s2": "Choose the department.",
+   "s3": "Type the teacher's name, then tap the class.",
+   "s4": "Tap a free time.",
+   "s5": "Enter your child's name and grade, then continue.",
+   "selected": "Your time is selected. If you have more children, press Another child.",
+   "s6": "Press Review and confirm.",
+   "s7": "Enter your name, email and mobile number.",
+   "s8": "Press Confirm.",
+   "done": "Done. Check your email and WhatsApp for the confirmation.",
+   "end": "Each appointment has its own link to cancel it."
+  }
+ },
+ "ar": {
+  "voice": "ar",
+  "speed": 135,
+  "lines": {
+   "title": "حَجْزُ مَوْعِدِ لِقاءِ المُعَلِّمِ يَسْتَغْرِقُ دَقيقَتَيْنِ. لا تَحْتاجُ إِلى حِساب.",
+   "s1": "اِضْغَطْ عَلى اللِقاءِ تَحْتَ الحَرَمِ المَدْرَسِيّ.",
+   "s2": "اِخْتَرِ القِسْم.",
+   "s3": "اُكْتُبِ اسْمَ المُعَلِّمِ، ثُمَّ اضْغَطْ عَلى الصَّفّ.",
+   "s4": "اِضْغَطْ عَلى وَقْتٍ مُتاح.",
+   "s5": "أَدْخِلِ اسْمَ طِفْلِكَ وَالصَّفَّ، ثُمَّ اضْغَطْ مُتابَعَة.",
+   "selected": "تَمَّ اخْتِيارُ الوَقْت. إِذا كانَ لَدَيْكَ طِفْلٌ آخَر، اِضْغَطْ عَلى زِرِّ طِفْلٍ آخَر.",
+   "s6": "اِضْغَطْ عَلى زِرِّ مُراجَعَةٍ وَتَأْكيد.",
+   "s7": "أَدْخِلِ اسْمَكَ وَبَريدَكَ الإِلِكْتُرونِيَّ وَرَقْمَ هاتِفِك.",
+   "s8": "اِضْغَطْ عَلى زِرِّ تَأْكيد.",
+   "done": "تَمّ. تَحَقَّقْ مِنْ بَريدِكَ الإِلِكْتُرونِيِّ وَواتْساب.",
+   "end": "لِكُلِّ مَوْعِدٍ رابِطٌ خاصٌّ لِلإِلْغاء."
+  }
+ }
+}
