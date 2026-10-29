@@ -9,7 +9,7 @@ let cachedToken = null; // { value, expiresAt }
 async function getToken() {
   if (cachedToken && cachedToken.expiresAt > Date.now() + 60_000) return cachedToken.value;
 
-  const url = `https://login.microsoftonline.com/${config.graph.tenantId}/oauth2/v2.0/token`;
+  const url = `${config.graph.authorityHost}/${config.graph.tenantId}/oauth2/v2.0/token`;
   const body = new URLSearchParams({
     client_id: config.graph.clientId,
     client_secret: config.graph.clientSecret,
@@ -33,8 +33,8 @@ async function getToken() {
 /**
  * @param {object} msg { to, subject, html, replyTo?, cc? }
  */
-async function sendMail(msg) {
-  if (!config.graph.enabled) {
+async function sendMail(msg, sender = config.graph.sender) {
+  if (!config.graph.hasApp || !sender) {
     return { status: 'skipped', detail: 'Graph mail not configured' };
   }
   const accessToken = await getToken();
@@ -50,7 +50,7 @@ async function sendMail(msg) {
   };
 
   const res = await fetch(
-    `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(config.graph.sender)}/sendMail`,
+    `${config.graph.host}/v1.0/users/${encodeURIComponent(sender)}/sendMail`,
     {
       method: 'POST',
       headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
@@ -58,9 +58,19 @@ async function sendMail(msg) {
     }
   );
 
-  if (res.status === 202) return { status: 'sent', detail: `to ${msg.to}` };
+  if (res.status === 202) return { status: 'sent', detail: `to ${msg.to} via Microsoft 365 as ${sender}` };
   const text = await res.text().catch(() => '');
-  throw new Error(`Graph sendMail failed (${res.status}): ${text.slice(0, 500)}`);
+  // The two mistakes everyone makes, said in words rather than codes.
+  if (res.status === 403) {
+    throw new Error(
+      `Microsoft refused (403). The app has not been granted the Mail.Send APPLICATION permission with admin consent, ` +
+        `or an access policy keeps it away from ${sender}.`
+    );
+  }
+  if (res.status === 404) {
+    throw new Error(`Microsoft could not find a mailbox called ${sender} (404). It must be a real, licensed mailbox in the tenant.`);
+  }
+  throw new Error(`Graph sendMail failed (${res.status}): ${text.slice(0, 300)}`);
 }
 
 module.exports = { sendMail };

@@ -34,13 +34,22 @@ const config = {
     name: process.env.ADMIN_NAME || 'Administrator',
   },
 
+  // The same Entra app that signs staff in can send mail, once it has the
+  // Mail.Send application permission - so GRAPH_* only need setting when a
+  // different app is wanted. The sender mailbox can also be set on Admin -> Email.
   graph: {
-    tenantId: process.env.GRAPH_TENANT_ID || '',
-    clientId: process.env.GRAPH_CLIENT_ID || '',
-    clientSecret: process.env.GRAPH_CLIENT_SECRET || '',
-    sender: process.env.GRAPH_SENDER || '',
+    tenantId: clean(process.env.GRAPH_TENANT_ID) || clean(process.env.ENTRA_TENANT_ID),
+    clientId: clean(process.env.GRAPH_CLIENT_ID) || clean(process.env.ENTRA_CLIENT_ID),
+    clientSecret: clean(process.env.GRAPH_CLIENT_SECRET) || clean(process.env.ENTRA_CLIENT_SECRET),
+    sender: clean(process.env.GRAPH_SENDER),
+    // Overridable so the test suite can stand in for Microsoft.
+    host: (process.env.GRAPH_HOST || 'https://graph.microsoft.com').replace(/\/+$/, ''),
+    authorityHost: (process.env.ENTRA_AUTHORITY || 'https://login.microsoftonline.com').replace(/\/+$/, ''),
+    get hasApp() {
+      return Boolean(this.tenantId && this.clientId && this.clientSecret);
+    },
     get enabled() {
-      return Boolean(this.tenantId && this.clientId && this.clientSecret && this.sender);
+      return Boolean(this.hasApp && this.sender);
     },
   },
 

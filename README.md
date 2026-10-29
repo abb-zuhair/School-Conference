@@ -175,11 +175,15 @@ Once someone has signed in, their Entra object id is stored, so changing their e
 | Sign-in worked, then stopped months later | The client secret expired. Create a new one and update `ENTRA_CLIENT_SECRET`. |
 | `AADSTS700016: application not found in the directory` | `ENTRA_TENANT_ID` or `ENTRA_CLIENT_ID` is wrong, or the app was registered in a different tenant. |
 
-### Email — SMTP from the admin console, or Microsoft Graph
+### Email — Microsoft 365 or SMTP, from the admin console
 
-**Admin → Email** takes a mail server: host, port, STARTTLS or TLS, username, a password that is stored and never shown again, and the sender address and name. It takes effect immediately, and a **Send a test** button records the attempt in the message log. Office 365 (`smtp.office365.com`, 587, an app password with *Authenticated SMTP* enabled on the mailbox) and Google Workspace (`smtp.gmail.com`, 587, an app password) are the usual choices; a relay on the school network works too, with certificate checking switched off if it presents one for a different name. A dedicated mailbox such as `appointments@aca.edu.kw` is better than a person's.
+**Admin → Email** has two ways out, and Microsoft 365 is the one to use.
 
-Microsoft Graph from the environment (`GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`, `GRAPH_CLIENT_SECRET`, `GRAPH_SENDER`) still works and needs no change; SMTP entered in the console takes over as soon as it is saved, and clearing it hands back to Graph. With neither, bookings still go through and every email is logged as `skipped`.
+**Microsoft 365 (Graph).** The Entra app that staff sign in with can send mail once it has one more permission. In the Entra admin centre: *App registrations → the app → API permissions → Add a permission → Microsoft Graph → **Application** permissions → `Mail.Send`*, then **Grant admin consent**. Back on the Email page, enter the mailbox to send as — a real, licensed one such as `appointments@aca.edu.kw` — and press **Send a test**. No password is involved: the app sends on the mailbox's behalf, over HTTPS, which works from any host. `GRAPH_*` variables are only needed for a different app from the sign-in one; `GRAPH_SENDER` still works as a fallback for the mailbox. A 403 on the test means the permission was not granted; a 404 means the mailbox does not exist.
+
+**SMTP.** Host, port, STARTTLS or TLS, username, a password stored and never shown again, sender address and name. **Railway blocks outgoing SMTP on its Free, Trial and Hobby plans** — a *connection timeout* on the test is that, not a wrong password — so this is for other hosts, or Railway Pro. Office 365 (`smtp.office365.com`, 587, an app password with *Authenticated SMTP* on) and Google Workspace (`smtp.gmail.com`, 587, an app password) are the usual settings.
+
+When both are set up, Microsoft 365 is used unless the page says otherwise; with neither, bookings still go through and every email is logged as `skipped`.
 
 **Who is told.** Parents always: confirmation, cancellation, a moved appointment, and the reminder. Teachers get a copy when a parent books (student, phone, the parent's note) and when a parent or the office cancels — never for a cancellation they made themselves; a department head cancelling on a colleague's sheet counts as the office. Both teacher copies have a switch on the Email page. `npm run email` proves all of this against a local SMTP sink.
 

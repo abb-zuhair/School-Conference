@@ -11,23 +11,22 @@
       </div>
     </div>
     <div class="spacer"></div>
-    <span class="badge <%= cfg.enabled ? 'ok' : 'muted' %>"><%= cfg.provider === 'smtp' ? 'SMTP' : cfg.provider === 'graph' ? 'Microsoft Graph' : 'Not configured' %></span>
+    <span class="badge <%= cfg.enabled ? 'ok' : 'muted' %>"><%= cfg.provider === 'smtp' ? 'SMTP' : cfg.provider === 'graph' ? 'Microsoft 365' : 'Not configured' %></span>
   </div>
 
-  <% if (cfg.provider === 'smtp') { %>
+  <% if (cfg.provider === 'graph') { %>
+    <div class="alert success" style="margin-bottom:0">
+      Sending through <strong>Microsoft 365</strong> as <span class="mono"><%= cfg.graph.sender %></span>, over HTTPS.
+    </div>
+  <% } else if (cfg.provider === 'smtp') { %>
     <div class="alert success" style="margin-bottom:0">
       Sending through <span class="mono"><%= cfg.smtp.host %>:<%= cfg.smtp.port %></span> as
       <strong><%= cfg.smtp.fromName %></strong> &lt;<span class="mono"><%= cfg.smtp.from %></span>&gt;.
     </div>
-  <% } else if (cfg.provider === 'graph') { %>
-    <div class="alert info" style="margin-bottom:0">
-      Sending through Microsoft Graph as <span class="mono"><%= graphSender %></span>, from the environment variables.
-      Fill in the SMTP form to use a mail server instead — it takes over as soon as it is saved.
-    </div>
   <% } else { %>
     <div class="alert info" style="margin-bottom:0">
       Email is off. Bookings still work and WhatsApp still goes out — every email is recorded as
-      <span class="mono">skipped</span> in the message log until a server is set.
+      <span class="mono">skipped</span> in the message log until one of the two options below is set up.
     </div>
   <% } %>
 </div>
@@ -41,7 +40,45 @@
 <% } %>
 
 <form method="post" action="/admin/email" class="card">
-  <h2>Mail server (SMTP)</h2>
+  <h2>Microsoft 365 <span class="muted small">— recommended</span></h2>
+  <p class="muted small">
+    Sends through Microsoft Graph over HTTPS, so it works from any host. (Railway blocks outgoing SMTP on its
+    Free, Trial and Hobby plans — a <em>connection timeout</em> on the SMTP test below is that, not a wrong password.)
+  </p>
+
+  <% if (graphApp.present) { %>
+    <div class="alert info" style="margin-bottom:12px">
+      Using the Entra app <span class="mono"><%= graphApp.clientId %></span><%= graphApp.fromEntra ? ' — the same one staff sign in with' : '' %>.
+      It needs one more permission before it can send:
+      <ol style="margin:8px 0 0 18px;padding:0">
+        <li>Entra admin centre → <strong>App registrations</strong> → this app → <strong>API permissions</strong> → <strong>Add a permission</strong> → Microsoft Graph → <strong>Application permissions</strong> → tick <span class="mono">Mail.Send</span> → Add.</li>
+        <li>Press <strong>Grant admin consent</strong> for the tenant.</li>
+        <li>Enter the mailbox to send as, below, and <strong>Send a test</strong>.</li>
+      </ol>
+    </div>
+  <% } else { %>
+    <div class="alert error" style="margin-bottom:12px">
+      No Entra app is configured. Set <span class="mono">ENTRA_TENANT_ID</span>, <span class="mono">ENTRA_CLIENT_ID</span> and
+      <span class="mono">ENTRA_CLIENT_SECRET</span> on the host (or <span class="mono">GRAPH_*</span> for a separate app), then come back here.
+    </div>
+  <% } %>
+
+  <div class="row">
+    <div class="field">
+      <label for="graph_sender">Send as (a Microsoft 365 mailbox) *</label>
+      <input id="graph_sender" name="graph_sender" type="email" value="<%= fromForm.graph_sender %>" placeholder="appointments@aca.edu.kw">
+      <div class="hint">A real, licensed mailbox in your tenant. A dedicated one such as <span class="mono">appointments@aca.edu.kw</span> is best — replies land somewhere the office watches, and nobody's password change breaks it. No password is needed here: the app sends on the mailbox's behalf.</div>
+    </div>
+  </div>
+
+  <h2 style="margin-top:22px">Which one to use</h2>
+  <div class="btn-row" style="gap:18px">
+    <label class="check"><input type="radio" name="provider" value="" <%= !fromForm.provider ? 'checked' : '' %>> <span>Whichever is set up <span class="muted small">(Microsoft 365 first)</span></span></label>
+    <label class="check"><input type="radio" name="provider" value="graph" <%= fromForm.provider === 'graph' ? 'checked' : '' %>> <span>Microsoft 365</span></label>
+    <label class="check"><input type="radio" name="provider" value="smtp" <%= fromForm.provider === 'smtp' ? 'checked' : '' %>> <span>SMTP server</span></label>
+  </div>
+
+  <h2 style="margin-top:22px">Mail server (SMTP) <span class="muted small">— only if Microsoft 365 is not an option</span></h2>
   <div class="row">
     <div class="field">
       <label for="host">Server *</label>
@@ -114,7 +151,9 @@
 
 <form method="post" action="/admin/email/test" class="card">
   <h2>Send a test</h2>
-  <p class="muted small">Sends one real email with the current settings and records the attempt in the message log.</p>
+  <p class="muted small">
+    Sends one real email through <strong><%= cfg.source %></strong> and records the attempt in the message log.
+  </p>
   <div class="row">
     <div class="field">
       <label for="test_to">Send to</label>

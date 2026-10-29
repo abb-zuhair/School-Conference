@@ -59,6 +59,43 @@ const smtp = new SMTPServer({
   },
 });
 
+/* ---------------------- a stand-in for Microsoft ---------------------- */
+
+const http = require('http');
+const GRAPH_PORT = 3302;
+const graphCalls = []; // { sender, to, subject, auth }
+let graphRefuse = null; // status to answer sendMail with, when set
+const msMock = http.createServer((req, res) => {
+  let body = '';
+  req.on('data', (c) => { body += c; });
+  req.on('end', () => {
+    if (req.url.endsWith('/oauth2/v2.0/token')) {
+      const p = new URLSearchParams(body);
+      if (p.get('client_secret') !== 'entra-secret') {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: 'invalid_client', error_description: 'bad secret' }));
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ access_token: 'tok', expires_in: 3600 }));
+    }
+    const m = /^\/v1\.0\/users\/([^/]+)\/sendMail$/.exec(req.url);
+    if (m) {
+      if (graphRefuse) { res.writeHead(graphRefuse); return res.end('{}'); }
+      const payload = JSON.parse(body);
+      graphCalls.push({
+        sender: decodeURIComponent(m[1]),
+        to: payload.message.toRecipients.map((r) => r.emailAddress.address),
+        subject: payload.message.subject,
+        auth: req.headers.authorization,
+      });
+      res.writeHead(202);
+      return res.end();
+    }
+    res.writeHead(404);
+    return res.end();
+  });
+});
+
 /* ---------------------------- client ---------------------------- */
 
 function jar() {
@@ -119,6 +156,7 @@ const mailTo = (addr) => inbox.filter((m) => m.to.includes(addr));
 
   for (const suffix of ['', '-wal', '-shm']) fs.rmSync(`${DB}${suffix}`, { force: true });
   await new Promise((r) => smtp.listen(SMTP_PORT, r));
+  await new Promise((r) => msMock.listen(GRAPH_PORT, r));
 
   Object.assign(process.env, {
     NODE_ENV: 'test',
@@ -131,6 +169,12 @@ const mailTo = (addr) => inbox.filter((m) => m.to.includes(addr));
     REMINDERS_ENABLED: 'false',
     WATI_API_ENDPOINT: '',
     WATI_ACCESS_TOKEN: '',
+    // The Entra app staff sign in with doubles as the mail sender.
+    ENTRA_TENANT_ID: '11111111-2222-3333-4444-555555555555',
+    ENTRA_CLIENT_ID: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+    ENTRA_CLIENT_SECRET: 'entra-secret',
+    ENTRA_AUTHORITY: `http://localhost:${GRAPH_PORT}`,
+    GRAPH_HOST: `http://localhost:${GRAPH_PORT}`,
     GRAPH_TENANT_ID: '',
     GRAPH_CLIENT_ID: '',
     GRAPH_CLIENT_SECRET: '',
@@ -165,6 +209,52 @@ const mailTo = (addr) => inbox.filter((m) => m.to.includes(addr));
   check('email page renders', r.status === 200 && r.text.includes('Mail server (SMTP)'));
   check('starts as not configured', r.text.includes('Not configured'));
   check('the nav links to it', r.text.includes('href="/admin/email"'));
+  check('Microsoft 365 is offered first', r.text.indexOf('Microsoft 365') < r.text.indexOf('Mail server (SMTP)'));
+  check('it names the Entra app staff sign in with', r.text.includes('aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee') && r.text.includes('the same one staff sign in with'));
+  check('it says what Railway does to SMTP', r.text.includes('Railway blocks outgoing SMTP'));
+  check('it says Mail.Send is what to grant', r.text.includes('Mail.Send'));
+
+  /* ---------- Microsoft 365: just a mailbox, no password ---------- */
+  r = await req(a, 'POST', '/admin/email', { graph_sender: 'Appointments@Example.ACA.edu.kw', teacher_on_booking: '1', teacher_on_cancel: '1' });
+  check('a sender mailbox saves', r.status === 302);
+  r = await follow(a, '/admin/email');
+  check('page reports Microsoft 365 in use', r.text.includes('Sending through <strong>Microsoft 365</strong>'));
+  check('mailbox stored lower-case', r.text.includes('appointments@example.aca.edu.kw'));
+
+  r = await req(a, 'POST', '/admin/email/test', { test_to: 'me@example.com' });
+  check('Graph test send reports success', r.text.includes('Test sent'), (r.text.match(/Test \w+\.<\/strong> [^<]*/) || [''])[0]);
+  check('it went to Microsoft, not SMTP', graphCalls.length === 1 && inbox.length === 0);
+  check('as the configured mailbox', graphCalls[0] && graphCalls[0].sender === 'appointments@example.aca.edu.kw');
+  check('with the app token', graphCalls[0] && graphCalls[0].auth === 'Bearer tok');
+
+  // Microsoft's refusal is explained, not just numbered.
+  graphRefuse = 403;
+  r = await req(a, 'POST', '/admin/email/test', { test_to: 'me@example.com' });
+  check('a 403 says to grant Mail.Send', r.text.includes('Test failed') && r.text.includes('Mail.Send'));
+  graphRefuse = 404;
+  r = await req(a, 'POST', '/admin/email/test', { test_to: 'me@example.com' });
+  check('a 404 says the mailbox does not exist', r.text.includes('could not find a mailbox'));
+  graphRefuse = null;
+
+  // A booking through Graph reaches both parent and teacher.
+  graphCalls.length = 0;
+  const viaGraph = jar();
+  r = await req(viaGraph, 'GET', '/e/ptc/s/1');
+  const gslots = [...r.text.matchAll(/name="slot_id" value="(\d+)"/g)].map((m) => Number(m[1]));
+  await pick(viaGraph, 'ptc', gslots[2], 'Graph Child');
+  r = await req(viaGraph, 'POST', '/e/ptc/confirm', { parent_name: 'Graph Parent', parent_email: 'graph@example.com', parent_phone: '99111111' });
+  await new Promise((x) => setTimeout(x, 800));
+  check('a booking sends the parent mail through Microsoft 365', graphCalls.some((c) => c.to.includes('graph@example.com')));
+  check('and the teacher copy', graphCalls.some((c) => c.to.includes('sara@example.aca.edu.kw')));
+  const gtoken = db.prepare("SELECT token FROM bookings WHERE parent_email = 'graph@example.com'").get().token;
+  await req(viaGraph, 'POST', `/booking/${gtoken}/cancel`);
+  await new Promise((x) => setTimeout(x, 500));
+
+  // Clear the mailbox again; the rest of the suite is about SMTP.
+  await req(a, 'POST', '/admin/email', { graph_sender: '', teacher_on_booking: '1', teacher_on_cancel: '1' });
+  graphCalls.length = 0;
+  r = await follow(a, '/admin/email');
+  check('clearing the mailbox turns Microsoft 365 off', r.text.includes('Not configured'));
 
   /* ---------- a booking with no mail set up is still a booking ---------- */
   const early = jar();
@@ -190,6 +280,7 @@ const mailTo = (addr) => inbox.filter((m) => m.to.includes(addr));
     teacher_on_cancel: '1',
   });
   check('settings save', r.status === 302);
+  inbox.length = 0;
   r = await follow(a, '/admin/email');
   check('page reports SMTP in use', r.text.includes('Sending through') && r.text.includes('localhost'));
   check('the password is never echoed', !r.text.includes('app-pass-1234'));
@@ -225,7 +316,7 @@ const mailTo = (addr) => inbox.filter((m) => m.to.includes(addr));
   const teacherMail = mailTo('sara@example.aca.edu.kw')[0] || { subject: '', body: '' };
   check('the copy names the parent', /Fatima/.test(teacherMail.subject));
   check("and carries the parent's note", /Reading progress/.test(teacherMail.body));
-  check('and is logged for the admin', db.prepare("SELECT COUNT(*) AS n FROM notifications WHERE kind = 'staff_copy' AND status = 'sent'").get().n === 1);
+  check('and is logged for the admin', db.prepare("SELECT COUNT(*) AS n FROM notifications WHERE kind = 'staff_copy' AND status = 'sent'").get().n >= 1);
 
   /* ---------- the parent cancels: teacher is told ---------- */
   inbox.length = 0;
@@ -295,12 +386,29 @@ const mailTo = (addr) => inbox.filter((m) => m.to.includes(addr));
   r = await req(a, 'POST', '/admin/email/test', { test_to: 'me@example.com' });
   check('a rejected login is shown on the page', r.text.includes('Test failed') && /Invalid login/i.test(r.text));
 
+  /* ---------- both set up: the choice decides ---------- */
+  await req(a, 'POST', '/admin/email', {
+    provider: '', graph_sender: 'appointments@example.aca.edu.kw',
+    host: 'localhost', port: String(SMTP_PORT), user: 'mailer@example.aca.edu.kw', password: 'app-pass-1234',
+    from: 'appointments@example.aca.edu.kw', from_name: 'ACA Appointments',
+  });
+  r = await follow(a, '/admin/email');
+  check('with both set up, Microsoft 365 is used by default', r.text.includes('Sending through <strong>Microsoft 365</strong>'));
+  await req(a, 'POST', '/admin/email', {
+    provider: 'smtp', graph_sender: 'appointments@example.aca.edu.kw',
+    host: 'localhost', port: String(SMTP_PORT), user: 'mailer@example.aca.edu.kw', password: '',
+    from: 'appointments@example.aca.edu.kw', from_name: 'ACA Appointments',
+  });
+  r = await follow(a, '/admin/email');
+  check('choosing SMTP explicitly switches to it', r.text.includes('Sending through <span class="mono">localhost'));
+
   /* ---------- only an admin ---------- */
   r = await req(teacher, 'GET', '/admin/email');
   check('a teacher cannot open the email settings', r.status === 403 || r.status === 302);
 
   console.log(`\n${pass} passed, ${fail} failed`);
   smtp.close();
+  msMock.close();
   process.exit(fail ? 1 : 0);
 })().catch((err) => {
   console.error('\nEmail test crashed:', err);

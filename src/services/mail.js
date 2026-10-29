@@ -14,6 +14,8 @@ const settings = require('../lib/settings');
 const graph = require('./graph-mail');
 
 const KEYS = {
+  provider: 'mail.provider',          // 'graph' | 'smtp' | '' (whichever is set up)
+  graphSender: 'mail.graph_sender',   // mailbox Graph sends as; beats GRAPH_SENDER
   host: 'mail.host',
   port: 'mail.port',
   secure: 'mail.secure',
@@ -42,12 +44,29 @@ function current() {
     fromName: settings.get(KEYS.fromName, '') || config.schoolName,
   };
   const smtpReady = Boolean(smtp.host && smtp.from);
-  const provider = smtpReady ? 'smtp' : config.graph.enabled ? 'graph' : null;
+  const graph = {
+    hasApp: config.graph.hasApp,
+    sender: settings.get(KEYS.graphSender, '') || config.graph.sender,
+  };
+  graph.ready = Boolean(graph.hasApp && graph.sender);
+
+  // An explicit choice wins; otherwise whichever is set up, Graph first because
+  // it goes over HTTPS and so works on every host (Railway blocks SMTP below Pro).
+  const wanted = settings.get(KEYS.provider, '');
+  let provider = null;
+  if (wanted === 'smtp' && smtpReady) provider = 'smtp';
+  else if (wanted === 'graph' && graph.ready) provider = 'graph';
+  else if (graph.ready) provider = 'graph';
+  else if (smtpReady) provider = 'smtp';
+
   return {
     smtp,
+    smtpReady,
+    graph,
+    wanted,
     provider,
     enabled: Boolean(provider),
-    source: provider === 'smtp' ? 'the admin console' : provider === 'graph' ? 'environment variables (Microsoft Graph)' : 'nothing yet',
+    source: provider === 'smtp' ? 'the SMTP server on this page' : provider === 'graph' ? 'Microsoft 365 (Graph)' : 'nothing yet',
     teacherOnBooking: settings.getBool(KEYS.teacherOnBooking, true),
     teacherOnCancel: settings.getBool(KEYS.teacherOnCancel, true),
   };
@@ -78,7 +97,7 @@ function getTransporter(smtp) {
  */
 async function sendMail(msg) {
   const cfg = current();
-  if (cfg.provider === 'graph') return graph.sendMail(msg);
+  if (cfg.provider === 'graph') return graph.sendMail(msg, cfg.graph.sender);
   if (cfg.provider !== 'smtp') return { status: 'skipped', detail: 'Email is not configured' };
   if (!msg.to) return { status: 'skipped', detail: 'No email address on the booking' };
 

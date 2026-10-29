@@ -1729,6 +1729,8 @@ function emailView(req, extra = {}) {
     cfg,
     passwordSet,
     fromForm: {
+      provider: settings.get(mail.KEYS.provider, ''),
+      graph_sender: settings.get(mail.KEYS.graphSender, '') || config.graph.sender,
       host: settings.get(mail.KEYS.host, ''),
       port: settings.get(mail.KEYS.port, ''),
       secure: settings.getBool(mail.KEYS.secure, false),
@@ -1739,7 +1741,12 @@ function emailView(req, extra = {}) {
       teacher_on_booking: cfg.teacherOnBooking,
       teacher_on_cancel: cfg.teacherOnCancel,
     },
-    graphSender: config.graph.enabled ? config.graph.sender : '',
+    graphApp: {
+      present: config.graph.hasApp,
+      clientId: config.graph.clientId,
+      tenantId: config.graph.tenantId,
+      fromEntra: !process.env.GRAPH_CLIENT_ID && Boolean(process.env.ENTRA_CLIENT_ID),
+    },
     result: null,
     testTo: auth.currentUser(req).email,
     ...extra,
@@ -1754,6 +1761,8 @@ router.post('/email', auth.requireRole('admin'), (req, res) => {
   const mail = require('../services/mail');
   const port = String(req.body.port || '').replace(/\D/g, '');
   const pairs = {
+    [mail.KEYS.provider]: ['graph', 'smtp'].includes(req.body.provider) ? req.body.provider : '',
+    [mail.KEYS.graphSender]: String(req.body.graph_sender || '').trim().toLowerCase(),
     [mail.KEYS.host]: String(req.body.host || '').trim(),
     [mail.KEYS.port]: port,
     [mail.KEYS.secure]: asBool(req.body.secure) ? '1' : '0',
@@ -1782,10 +1791,10 @@ router.post('/email', auth.requireRole('admin'), (req, res) => {
   req.flash(
     'success',
     now.provider === 'smtp'
-      ? `Email settings saved. Sending through ${now.smtp.host} as ${now.smtp.from}.`
+      ? `Saved. Email goes through ${now.smtp.host} as ${now.smtp.from}.`
       : now.provider === 'graph'
-        ? 'SMTP cleared. Email goes through Microsoft Graph from the environment again.'
-        : 'Saved. Email is off until a server and a sender address are set.'
+        ? `Saved. Email goes through Microsoft 365 as ${now.graph.sender}.`
+        : 'Saved. Email is off until Microsoft 365 or an SMTP server is set up below.'
   );
   return res.redirect('/admin/email');
 });
