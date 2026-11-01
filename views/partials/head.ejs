@@ -6,12 +6,16 @@
   <meta name="robots" content="noindex">
   <title><%= title %> · <%= config.schoolName %></title>
   <link rel="stylesheet" href="/static/css/app.css">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%230b3d5c'/><text x='16' y='22' font-size='16' font-family='Arial' font-weight='bold' text-anchor='middle' fill='%23c8922a'>A</text></svg>">
+  <link rel="stylesheet" href="/branding/theme.css?v=<%= brand.version %>">
+  <link rel="icon" href="<%= brand.logoUrl || h.faviconDataUrl() %>">
 </head>
 <body class="<%= bodyClass || '' %>">
 <header class="site-header">
   <div class="bar">
-    <a class="brand" href="/"><span class="mark">ACA</span> <span><%= config.schoolName %></span></a>
+    <a class="brand" href="/">
+      <% if (brand.logoUrl) { %><img class="logo" src="<%= brand.logoUrl %>" alt=""><% } else { %><span class="mark"><%= brand.short %></span><% } %>
+      <span><%= brand.name %></span>
+    </a>
     <nav class="nav">
       <a href="/" class="<%= path === '/' ? 'on' : '' %>">Book an appointment</a>
       <a href="/lookup" class="<%= path === '/lookup' ? 'on' : '' %>">My appointments</a>

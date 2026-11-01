@@ -35,17 +35,22 @@ function manageUrl(b) {
 
 /* ------------------------- email templates ------------------------- */
 
+const branding = require('./branding');
+const brandColour = () => branding.current().primary;
+const brandText = () => branding.current().onPrimary;
+
 function shell(title, bodyHtml) {
+  const b = branding.current();
   return `<!doctype html><html><body style="margin:0;background:#f4f6f8;padding:24px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#16232e">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
     <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;background:#fff;border-radius:14px;overflow:hidden;border:1px solid #e2e8ef">
-      <tr><td style="background:#0b3d5c;padding:20px 26px;color:#fff">
+      <tr><td style="background:${b.primary};padding:20px 26px;color:${b.onPrimary}">
         <div style="font-size:17px;font-weight:600">${escapeHtml(config.schoolName)}</div>
         <div style="font-size:13px;opacity:.85">${escapeHtml(title)}</div>
       </td></tr>
       <tr><td style="padding:26px">${bodyHtml}</td></tr>
       <tr><td style="padding:16px 26px;background:#f7f9fb;font-size:12px;color:#6b7c8c">
-        This is an automated message${config.supportEmail ? ` — questions? Write to <a href="mailto:${escapeHtml(config.supportEmail)}" style="color:#0b3d5c">${escapeHtml(config.supportEmail)}</a>` : ''}.
+        This is an automated message${config.supportEmail ? ` — questions? Write to <a href="mailto:${escapeHtml(config.supportEmail)}" style="color:${b.primary}">${escapeHtml(config.supportEmail)}</a>` : ''}.
       </td></tr>
     </table>
   </td></tr></table></body></html>`;
@@ -79,7 +84,7 @@ function confirmationEmail(b) {
       `<p style="margin:0 0 16px;font-size:15px">Dear ${escapeHtml(b.parent_name)}, your appointment is confirmed.</p>
        ${detailTable(b)}
        ${b.instructions ? `<div style="margin:18px 0;padding:12px 14px;background:#f1f6fa;border-radius:8px;font-size:13px;white-space:pre-wrap">${escapeHtml(b.instructions)}</div>` : ''}
-       <p style="margin:20px 0 0"><a href="${manageUrl(b)}" style="display:inline-block;background:#0b3d5c;color:#fff;text-decoration:none;padding:11px 20px;border-radius:8px;font-size:14px">View or cancel this appointment</a></p>
+       <p style="margin:20px 0 0"><a href="${manageUrl(b)}" style="display:inline-block;background:${brandColour()};color:${brandText()};text-decoration:none;padding:11px 20px;border-radius:8px;font-size:14px">View or cancel this appointment</a></p>
        <p style="margin:14px 0 0;font-size:12px;color:#6b7c8c">Keep this link — it is the only way to change the booking online.</p>`
     ),
   };
@@ -115,7 +120,7 @@ function rescheduledEmail(b) {
       `<p style="margin:0 0 16px;font-size:15px">Dear ${escapeHtml(b.parent_name)}, the school has moved your appointment. You do not need to book again — the new time is below.</p>
        ${was}
        ${detailTable(b)}
-       <p style="margin:20px 0 0"><a href="${manageUrl(b)}" style="display:inline-block;background:#0b3d5c;color:#fff;text-decoration:none;padding:11px 20px;border-radius:8px;font-size:14px">View or cancel this appointment</a></p>
+       <p style="margin:20px 0 0"><a href="${manageUrl(b)}" style="display:inline-block;background:${brandColour()};color:${brandText()};text-decoration:none;padding:11px 20px;border-radius:8px;font-size:14px">View or cancel this appointment</a></p>
        <p style="margin:14px 0 0;font-size:12px;color:#6b7c8c">Your original link still works and now shows the new time. If it no longer suits you, you can cancel from there and pick another.</p>`
     ),
   };
@@ -130,7 +135,7 @@ function reassignedEmail(b) {
       'Your appointment is with a different teacher',
       `<p style="margin:0 0 16px;font-size:15px">Dear ${escapeHtml(b.parent_name)}, your appointment below will now be with <strong>${escapeHtml(withWhom(b))}</strong>${was}. The date, time and place are unchanged, and you do not need to do anything.</p>
        ${detailTable(b)}
-       <p style="margin:20px 0 0"><a href="${manageUrl(b)}" style="display:inline-block;background:#0b3d5c;color:#fff;text-decoration:none;padding:11px 20px;border-radius:8px;font-size:14px">View or cancel this appointment</a></p>`
+       <p style="margin:20px 0 0"><a href="${manageUrl(b)}" style="display:inline-block;background:${brandColour()};color:${brandText()};text-decoration:none;padding:11px 20px;border-radius:8px;font-size:14px">View or cancel this appointment</a></p>`
     ),
   };
 }
@@ -142,7 +147,7 @@ function reminderEmail(b) {
       'Appointment reminder',
       `<p style="margin:0 0 16px;font-size:15px">Dear ${escapeHtml(b.parent_name)}, this is a reminder of your upcoming appointment.</p>
        ${detailTable(b)}
-       <p style="margin:20px 0 0"><a href="${manageUrl(b)}" style="display:inline-block;background:#0b3d5c;color:#fff;text-decoration:none;padding:11px 20px;border-radius:8px;font-size:14px">View appointment</a></p>`
+       <p style="margin:20px 0 0"><a href="${manageUrl(b)}" style="display:inline-block;background:${brandColour()};color:${brandText()};text-decoration:none;padding:11px 20px;border-radius:8px;font-size:14px">View appointment</a></p>`
     ),
   };
 }
@@ -314,7 +319,7 @@ async function notifyStaff(booking) {
       `<p style="margin:0 0 16px;font-size:15px">A parent has booked a slot on your schedule.</p>
        ${detailTable(booking)}
        ${booking.notes ? `<div style="margin:16px 0;padding:12px 14px;background:#f1f6fa;border-radius:8px;font-size:13px"><strong>Parent's note:</strong><br>${escapeHtml(booking.notes)}</div>` : ''}
-       <p style="margin:18px 0 0"><a href="${config.baseUrl}/staff" style="color:#0b3d5c">Open your schedule</a></p>`
+       <p style="margin:18px 0 0"><a href="${config.baseUrl}/staff" style="color:${brandColour()}">Open your schedule</a></p>`
     ),
   };
   try {
@@ -342,7 +347,7 @@ async function notifyStaffCancelled(booking) {
       'Appointment cancelled',
       `<p style="margin:0 0 16px;font-size:15px">This appointment on your schedule was cancelled by ${by}. The time is free again for another family.</p>
        ${detailTable(booking)}
-       <p style="margin:18px 0 0"><a href="${config.baseUrl}/staff" style="color:#0b3d5c">Open your schedule</a></p>`
+       <p style="margin:18px 0 0"><a href="${config.baseUrl}/staff" style="color:${brandColour()}">Open your schedule</a></p>`
     ),
   };
   try {
@@ -365,7 +370,7 @@ async function notifyStaffTransfer(schedule, { from, booked, parentsTold = true 
       'A schedule is now yours',
       `<p style="margin:0 0 16px;font-size:15px">The office has moved <strong>${escapeHtml(schedule.display_name)}</strong> (${escapeHtml(schedule.event_name)}) to you${from ? ` from ${escapeHtml(from)}` : ''}.
        It comes with ${booked} booked appointment${booked === 1 ? '' : 's'}${booked ? (parentsTold ? ' - the parents have been told they will see you.' : ' - the parents have not been told yet.') : '.'}</p>
-       <p style="margin:18px 0 0"><a href="${config.baseUrl}/staff" style="color:#0b3d5c">Open your schedules</a></p>`
+       <p style="margin:18px 0 0"><a href="${config.baseUrl}/staff" style="color:${brandColour()}">Open your schedules</a></p>`
     ),
   };
   try {
@@ -377,6 +382,7 @@ async function notifyStaffTransfer(schedule, { from, booked, parentsTold = true 
 }
 
 module.exports = {
+  EMAIL_BUILDERS,
   notifyStaffTransfer,
   notify,
   notifyAsync,

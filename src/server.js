@@ -7,6 +7,7 @@ const config = require('./config');
 const { db, migrate, dbPath, isEphemeralStorage } = require('./db');
 const SqliteStore = require('./db/session-store');
 const auth = require('./lib/auth');
+const branding = require('./services/branding');
 const helpers = require('./lib/helpers');
 const reminders = require('./services/reminders');
 
@@ -23,6 +24,7 @@ app.use(auth.withRequest);
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(express.json({ limit: '1mb' }));
 app.use('/static', express.static(path.join(__dirname, '..', 'public'), { maxAge: '7d' }));
+
 
 app.use(
   session({
@@ -54,6 +56,7 @@ app.use((req, res, next) => {
 // Shared view locals
 app.use((req, res, next) => {
   res.locals.config = config;
+  res.locals.brand = branding.current();
   res.locals.h = helpers;
   res.locals.user = auth.currentUser(req);
   res.locals.path = req.path;
@@ -72,6 +75,19 @@ app.use((req, res, next) => {
 });
 
 app.get('/healthz', (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
+
+// The school's colours and logo, as saved on Admin › Branding.
+app.get('/branding/theme.css', (req, res) => {
+  res.set('Content-Type', 'text/css; charset=utf-8');
+  res.set('Cache-Control', 'public, max-age=3600');
+  res.send(branding.themeCss());
+});
+app.get('/branding/logo', (req, res) => {
+  const file = branding.logoPath();
+  if (!file) return res.status(404).end();
+  res.set('Cache-Control', 'public, max-age=86400');
+  return res.sendFile(file);
+});
 
 app.use('/auth', require('./routes/auth'));
 app.use('/', require('./routes/public'));

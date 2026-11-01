@@ -78,6 +78,7 @@ const LABELS = {
   email_settings: 'Changed email settings',
   backup_download: 'Downloaded a database backup',
   activity_export: 'Exported the activity log',
+  branding_update: 'Changed the school branding',
 };
 
 /** Filter groups for the page, by action prefix. */
@@ -88,7 +89,7 @@ const GROUPS = [
   { key: 'schedules', label: 'Events & schedules', prefixes: ['event_', 'schedule'] },
   { key: 'staff', label: 'Staff & classes', prefixes: ['staff_', 'class'] },
   { key: 'setup', label: 'Campuses & departments', prefixes: ['campus_', 'department_'] },
-  { key: 'settings', label: 'Settings & backups', prefixes: ['messaging_', 'email_', 'backup_', 'activity_'] },
+  { key: 'settings', label: 'Settings & backups', prefixes: ['messaging_', 'email_', 'backup_', 'activity_', 'branding_'] },
 ];
 
 function inGroup(action, g) {

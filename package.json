@@ -23,7 +23,8 @@
     "slots": "node test/slots.js",
     "family": "node test/family.js",
     "email": "node test/email.js",
-    "activity": "node test/activity.js"
+    "activity": "node test/activity.js",
+    "branding": "node test/branding.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

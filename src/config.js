@@ -17,6 +17,16 @@ const clean = (v) =>
 const bool = (v, d = false) => (v === undefined || v === '' ? d : /^(1|true|yes|on)$/i.test(String(v)));
 const int = (v, d) => (v === undefined || v === '' || Number.isNaN(Number(v)) ? d : parseInt(v, 10));
 
+/** Read a branding value once the database is up; before that, the environment answers. */
+function brand(key, fallback) {
+  try {
+    // Lazy: the database needs this module first.
+    return require('./services/branding').current()[key] || fallback;
+  } catch (_) {
+    return fallback;
+  }
+}
+
 const config = {
   env: process.env.NODE_ENV || 'development',
   port: int(process.env.PORT, 3000),
@@ -24,8 +34,13 @@ const config = {
   sessionSecret: process.env.SESSION_SECRET || 'insecure-dev-secret-change-me',
   databasePath: process.env.DATABASE_PATH || path.join(process.cwd(), 'data', 'app.db'),
   timezone: process.env.SCHOOL_TIMEZONE || 'Asia/Kuwait',
-  schoolName: process.env.SCHOOL_NAME || 'American Creativity Academy',
-  supportEmail: process.env.SUPPORT_EMAIL || '',
+  // Both can be changed on Admin › Branding; the environment is the default.
+  get schoolName() {
+    return brand('name', process.env.SCHOOL_NAME || 'American Creativity Academy');
+  },
+  get supportEmail() {
+    return brand('supportEmail', process.env.SUPPORT_EMAIL || '');
+  },
   trustProxy: bool(process.env.TRUST_PROXY, true),
 
   admin: {

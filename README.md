@@ -48,6 +48,7 @@ npm run sso          # Entra sign-in against a mock login host — starts its ow
 npm run messaging    # WhatsApp templates against a mock WATI host
 npm run email        # SMTP settings and teacher copies against a local SMTP sink
 npm run activity     # the activity log: what is recorded, the page, filters, CSV, campus scoping
+npm run branding     # Admin › Branding: name, mark, logo, colours, theme, email colours
 ```
 
 `npm run smoke`, `features`, `department`, `slots` and `family` each want a freshly seeded
@@ -128,6 +129,18 @@ What a head cannot do is the point of the role. No other department, no other ca
 - **Activity log** (Admin › Activity): every change anyone makes, with who, when (school time) and what — sign-ins, staff and class edits (field by field, old → new), events, schedules, slots, settings, backups, and every parent booking or cancellation under the parent's name. Filter by person, by kind of change, by exact action, by date, or search the details; download the result as CSV. A campus admin sees their own campus only. Names and the request address are written down at the time, so a renamed or deleted account still reads correctly. Records are kept for good and travel with the database backup.
 
 ---
+
+## Running it for another school
+
+One deployment serves one school. The same code runs KES, RGS or any other
+school as its own Railway service with its own database, address, sign-in
+and look; **Admin › Branding** sets the name, short mark, logo, colours,
+support address and staff-domain hint, and the `SCHOOL_*` / `BRAND_*`
+variables are the starting point for a fresh deployment. Every service
+deploys from the same repository, so one `deploy.bat` updates them all (it
+backs up every address listed in its `SITES` line first). The full,
+step-by-step version is in [`docs/NEW-SCHOOL.md`](docs/NEW-SCHOOL.md).
+`npm run branding` checks the branding page, theme, logo and email colours.
 
 ## Configuration
 

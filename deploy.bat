@@ -30,6 +30,11 @@ if "%ZIP%"=="" set "ZIP=%USERPROFILE%\Downloads\School-Conference.zip"
 set "WORK=%USERPROFILE%\Downloads\School-Conference-deploy"
 set "REPO=%WORK%\aca-appointments"
 set "SITE=https://appointments.aca.edu.kw"
+rem Every school that deploys from this repository. One push updates them all,
+rem so each one is backed up first. Add a line per school.
+set "SITES=https://appointments.aca.edu.kw"
+rem set "SITES=%SITES% https://appointments.kes.edu.kw"
+rem set "SITES=%SITES% https://appointments.rgsgm.edu.om"
 
 echo.
 echo   ACA Appointments - deploy
@@ -60,11 +65,12 @@ rem --- Step 1: back up the live database --------------------------------
 echo.
 echo   Step 1 of 4 - back up the live database
 echo.
-echo   Opening the backup download in your browser. Sign in as admin if it
-echo   asks, and save the file somewhere safe. This is your undo button.
+echo   Opening the backup download in your browser - one tab per school.
+echo   Sign in as admin if it asks, and save each file somewhere safe. This
+echo   is your undo button.
 echo.
-start "" "%SITE%/admin/backup.db"
-echo   When the file has downloaded, press a key to carry on.
+for %%S in (%SITES%) do start "" "%%S/admin/backup.db"
+echo   When the files have downloaded, press a key to carry on.
 echo   (Close this window instead if you want to stop - nothing has changed yet.)
 echo.
 pause

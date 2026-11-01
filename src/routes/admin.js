@@ -2065,6 +2065,86 @@ router.post('/email/test', auth.requireRole('admin'), async (req, res) => {
 /* ------------------------- SSO diagnostics -------------------------- */
 
 /** Shows exactly what the app will send to Microsoft, so an AADSTS code can be traced. */
+/* ------------------------------ branding ------------------------------ *
+ * One deployment per school; this is where a school makes it theirs. The
+ * logo is kept beside the database so it survives a redeploy.
+ * ---------------------------------------------------------------------- */
+
+const branding = require('../services/branding');
+
+const logoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 1024 * 1024, files: 1 },
+  fileFilter: (req, file, cb) => {
+    const ok = ['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp'].includes(file.mimetype);
+    cb(ok ? null : new Error('Upload a PNG, JPG, SVG or WebP logo (under 1 MB).'), ok);
+  },
+});
+
+function brandingView(req, extra = {}) {
+  const b = branding.current();
+  return {
+    title: 'Branding',
+    brandNow: b,
+    defaults: branding.DEFAULTS,
+    fromForm: {
+      name: b.name,
+      name_ar: b.nameAr,
+      short: b.short,
+      primary: b.primary,
+      accent: b.accent,
+      support_email: b.supportEmail,
+      domain: b.domain,
+      ...(extra.form || {}),
+    },
+    ...extra,
+  };
+}
+
+router.get('/branding', auth.requireRole('admin'), (req, res) => {
+  res.render('admin/branding', brandingView(req));
+});
+
+router.post('/branding', auth.requireRole('admin'), (req, res) => {
+  logoUpload.single('logo')(req, res, (err) => {
+    if (err) {
+      req.flash('error', err.message);
+      return res.redirect('/admin/branding');
+    }
+    // An empty name means "back to the deployment's SCHOOL_NAME".
+    const name = String(req.body.name || '').trim();
+    for (const [field, label] of [['primary', 'Main colour'], ['accent', 'Accent colour']]) {
+      if (req.body[field] && !branding.parseHex(req.body[field])) {
+        req.flash('error', `${label} must be a hex colour such as #0b3d5c.`);
+        return res.redirect('/admin/branding');
+      }
+    }
+    const before = branding.current();
+    branding.save({ ...req.body, name });
+    let logoNote = '';
+    if (asBool(req.body.remove_logo)) {
+      branding.removeLogo();
+      logoNote = ' Logo removed.';
+    } else if (req.file) {
+      try {
+        branding.saveLogo(req.file);
+        logoNote = ' Logo uploaded.';
+      } catch (e) {
+        req.flash('error', e.message);
+        return res.redirect('/admin/branding');
+      }
+    }
+    const after = branding.current();
+    const changes = {};
+    for (const k of ['name', 'nameAr', 'short', 'primary', 'accent', 'supportEmail', 'domain', 'logo']) {
+      if (String(before[k] || '') !== String(after[k] || '')) changes[k] = { from: before[k] || null, to: after[k] || null };
+    }
+    auth.audit(auth.currentUser(req).id, 'branding_update', { changes });
+    req.flash('success', `Branding saved.${logoNote}`);
+    return res.redirect('/admin/branding');
+  });
+});
+
 router.get('/sso-check', auth.requireRole('admin'), (req, res) => {
   const ssoService = require('../services/entra-sso');
   const check = config.entra.enabled ? ssoService.diagnose() : null;

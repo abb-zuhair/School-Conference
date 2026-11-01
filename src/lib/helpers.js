@@ -175,6 +175,7 @@ function searchKey(value) {
 
 module.exports = {
   TZ,
+  faviconDataUrl: () => require('../services/branding').faviconDataUrl(),
   formatStamp,
   roleLabel,
   roleNote,

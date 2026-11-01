@@ -1,0 +1,93 @@
+<%- include('../partials/head', { narrow: true }) %>
+<%- include('../partials/admin-nav') %>
+
+<div class="card">
+  <h1>Branding</h1>
+  <p class="muted">
+    The school's name, logo and colours — on every page, in every email, and in the browser tab.
+    One deployment serves one school, so this is where a new school makes it theirs.
+  </p>
+
+  <div class="brand-preview" id="brand-preview" style="--p:<%= fromForm.primary %>;--a:<%= fromForm.accent %>;--onp:<%= brandNow.onPrimary %>;--ona:<%= brandNow.onAccent %>">
+    <div class="bar">
+      <% if (brandNow.logoUrl) { %><img src="<%= brandNow.logoUrl %>" alt="" class="logo"><% } else { %><span class="mark" id="preview-mark"><%= fromForm.short %></span><% } %>
+      <strong id="preview-name"><%= fromForm.name %></strong>
+      <span class="spacer"></span>
+      <span class="btnish">Book an appointment</span>
+    </div>
+    <div class="body">
+      <span class="pill">Preview — this is how the header will look</span>
+    </div>
+  </div>
+
+  <form method="post" action="/admin/branding" enctype="multipart/form-data" style="margin-top:18px">
+    <div class="row">
+      <div class="field">
+        <label for="name">School name</label>
+        <input id="name" name="name" value="<%= fromForm.name %>" required oninput="document.getElementById('preview-name').textContent=this.value">
+        <div class="hint">Shown in the header, page titles, emails and WhatsApp messages.</div>
+      </div>
+      <div class="field">
+        <label for="short">Short mark</label>
+        <input id="short" name="short" value="<%= fromForm.short %>" maxlength="6" style="text-transform:uppercase" oninput="var m=document.getElementById('preview-mark'); if (m) m.textContent=this.value.toUpperCase()">
+        <div class="hint">2–5 letters, used when there is no logo and in the browser-tab icon. Leave blank for the initials.</div>
+      </div>
+    </div>
+    <div class="field">
+      <label for="name_ar">Arabic name <span class="muted">(optional)</span></label>
+      <input id="name_ar" name="name_ar" value="<%= fromForm.name_ar %>" dir="rtl">
+    </div>
+
+    <div class="row">
+      <div class="field">
+        <label for="primary">Main colour</label>
+        <div class="colour-pick">
+          <input type="color" id="primary_pick" value="<%= fromForm.primary %>" oninput="document.getElementById('primary').value=this.value;document.getElementById('brand-preview').style.setProperty('--p',this.value)">
+          <input id="primary" name="primary" value="<%= fromForm.primary %>" pattern="#?[0-9a-fA-F]{6}" oninput="if(/^#?[0-9a-fA-F]{6}$/.test(this.value)){var v=this.value.startsWith('#')?this.value:'#'+this.value;document.getElementById('primary_pick').value=v;document.getElementById('brand-preview').style.setProperty('--p',v)}">
+        </div>
+        <div class="hint">Header, buttons and links. Take it from the school website or logo. Light colours get dark text automatically.</div>
+      </div>
+      <div class="field">
+        <label for="accent">Accent colour</label>
+        <div class="colour-pick">
+          <input type="color" id="accent_pick" value="<%= fromForm.accent %>" oninput="document.getElementById('accent').value=this.value;document.getElementById('brand-preview').style.setProperty('--a',this.value)">
+          <input id="accent" name="accent" value="<%= fromForm.accent %>" pattern="#?[0-9a-fA-F]{6}" oninput="if(/^#?[0-9a-fA-F]{6}$/.test(this.value)){var v=this.value.startsWith('#')?this.value:'#'+this.value;document.getElementById('accent_pick').value=v;document.getElementById('brand-preview').style.setProperty('--a',v)}">
+        </div>
+        <div class="hint">The short mark's background and small highlights.</div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="logo">Logo <span class="muted">(optional)</span></label>
+      <input type="file" id="logo" name="logo" accept="image/png,image/jpeg,image/svg+xml,image/webp">
+      <div class="hint">
+        PNG, JPG, SVG or WebP under 1 MB. It is shown 34px tall on the header's coloured background, so a <strong>white or light version</strong> of the logo looks best; a dark logo on a dark header will disappear. It replaces the short mark.
+        <% if (brandNow.logoUrl) { %><br><label class="check" style="margin-top:6px"><input type="checkbox" name="remove_logo" value="1"><span>Remove the current logo and go back to the short mark</span></label><% } %>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="field">
+        <label for="support_email">Support email</label>
+        <input id="support_email" name="support_email" type="email" value="<%= fromForm.support_email %>" placeholder="it@<%= fromForm.domain %>">
+        <div class="hint">Shown in the footer and at the bottom of every email, and used as the reply-to when a teacher has no address.</div>
+      </div>
+      <div class="field">
+        <label for="domain">Staff email domain</label>
+        <input id="domain" name="domain" value="<%= fromForm.domain %>" placeholder="school.edu.kw">
+        <div class="hint">The hint on the staff sign-in page ("use your @school account").</div>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn" type="submit">Save branding</button>
+      <a class="btn ghost" href="/">See the home page</a>
+    </div>
+    <p class="muted small" style="margin-top:10px">
+      Clearing a field goes back to the deployment's environment value (<span class="mono">SCHOOL_NAME</span>, <span class="mono">SCHOOL_SHORT</span>, <span class="mono">BRAND_PRIMARY</span>, <span class="mono">BRAND_ACCENT</span>, <span class="mono">SUPPORT_EMAIL</span>, <span class="mono">SCHOOL_DOMAIN</span>).
+      Browsers may keep the old colours for up to an hour; a hard refresh shows the new ones at once.
+    </p>
+  </form>
+</div>
+
+<%- include('../partials/foot') %>
