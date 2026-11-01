@@ -1,0 +1,80 @@
+<%- include('../partials/head', { narrow: true }) %>
+<%- include('../partials/admin-nav') %>
+
+<div class="crumbs">
+  <a href="/admin">Admin</a><span>›</span>
+  <a href="/admin/events/<%= schedule.event_id %>"><%= schedule.event_name %></a><span>›</span>Transfer schedule
+</div>
+
+<div class="card">
+  <h1>Hand “<%= schedule.display_name %>” to another teacher</h1>
+  <p class="muted">
+    Currently <strong><%= schedule.staff_name || 'nobody' %></strong>
+    <% if (schedule.department_name) { %>· <%= schedule.department_name %><% } %>
+    · <%= schedule.event_name %>
+  </p>
+
+  <div class="stat-row">
+    <div class="stat"><div class="n"><%= facts.slots %></div><div class="l">Slots</div></div>
+    <div class="stat"><div class="n"><%= facts.booked %></div><div class="l">Booked</div></div>
+    <div class="stat"><div class="n"><%= Math.max(0, facts.slots - facts.booked) %></div><div class="l">Empty</div></div>
+  </div>
+
+  <p class="small muted" style="margin-top:12px">
+    Everything on the sheet goes across as it is — every slot, every booking, the room, the meeting link and the notes.
+    Parents keep their times and their links; only the name across the table changes.
+  </p>
+
+  <form method="get" action="/admin/schedules/<%= schedule.id %>/transfer" id="pick-form">
+    <div class="field">
+      <label for="to">Hand it to</label>
+      <select id="to" name="to" onchange="this.form.submit()">
+        <option value="">— choose a teacher —</option>
+        <% teachers.forEach(function (t) { %>
+          <option value="<%= t.id %>" <%= target && target.id === t.id ? 'selected' : '' %>>
+            <%= t.name %><%= t.title ? ' — ' + t.title : '' %><%= t.department_id && schedule.department_id && t.department_id !== schedule.department_id ? ' (another department)' : '' %>
+          </option>
+        <% }); %>
+      </select>
+      <noscript><button class="btn sm ghost" type="submit">Check</button></noscript>
+    </div>
+  </form>
+
+  <% if (target) { %>
+    <form method="post" action="/admin/schedules/<%= schedule.id %>/transfer" class="danger-zone" style="margin-top:14px">
+      <input type="hidden" name="staff_id" value="<%= target.id %>">
+      <h3 style="margin-top:0">Hand it to <%= target.name %></h3>
+
+      <% if (facts.clashes > 0) { %>
+        <div class="alert warn">
+          <strong><%= target.name %> is already booked at <%= facts.clashes %> of these times</strong> on another sheet in this event —
+          a parent would be waiting while they are in a different meeting. Pick someone else, move those times first, or tick below to go ahead anyway.
+        </div>
+        <label class="check"><input type="checkbox" name="accept_clashes" value="1"><span>I understand — hand it over with the clashing times as they are</span></label>
+      <% } else if (facts.booked > 0) { %>
+        <div class="alert info"><%= target.name %> is free at every booked time on this sheet.</div>
+      <% } %>
+
+      <% if (schedule.class_id) { %>
+        <label class="check" style="margin-top:8px"><input type="checkbox" name="move_class" value="1" checked>
+          <span>Move the class <strong><%= schedule.class_name %></strong> to <%= target.name %> as well, so the Classes page agrees with the sheet</span></label>
+      <% } %>
+      <% if (facts.booked > 0) { %>
+        <label class="check" style="margin-top:6px"><input type="checkbox" name="notify" value="1" checked>
+          <span>Tell the <%= facts.booked %> booked parent<%= facts.booked === 1 ? '' : 's' %> (email, and WhatsApp if set up) that they will see <%= target.name %> instead</span></label>
+      <% } else { %>
+        <p class="small muted" style="margin:8px 0 0">Nothing is booked on it yet, so no parent needs telling.</p>
+      <% } %>
+
+      <div class="btn-row" style="margin-top:14px">
+        <button class="btn danger" type="submit">Hand the schedule to <%= target.name %></button>
+        <a class="btn ghost" href="/admin/events/<%= schedule.event_id %>">Cancel</a>
+      </div>
+      <p class="muted small" style="margin-top:8px">
+        <%= target.name %> is emailed a summary. The department stays as it is — change it from the event page if it should move too.
+      </p>
+    </form>
+  <% } %>
+</div>
+
+<%- include('../partials/foot') %>

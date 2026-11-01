@@ -121,6 +121,20 @@ function rescheduledEmail(b) {
   };
 }
 
+/** Same time, same room - a different person across the table. */
+function reassignedEmail(b) {
+  const was = b.previous_teacher ? ` instead of ${escapeHtml(b.previous_teacher)}` : '';
+  return {
+    subject: `Change of teacher: ${b.event_name} — ${formatDate(b.slot_date)} at ${formatTime(b.start_time)}`,
+    html: shell(
+      'Your appointment is with a different teacher',
+      `<p style="margin:0 0 16px;font-size:15px">Dear ${escapeHtml(b.parent_name)}, your appointment below will now be with <strong>${escapeHtml(withWhom(b))}</strong>${was}. The date, time and place are unchanged, and you do not need to do anything.</p>
+       ${detailTable(b)}
+       <p style="margin:20px 0 0"><a href="${manageUrl(b)}" style="display:inline-block;background:#0b3d5c;color:#fff;text-decoration:none;padding:11px 20px;border-radius:8px;font-size:14px">View or cancel this appointment</a></p>`
+    ),
+  };
+}
+
 function reminderEmail(b) {
   return {
     subject: `Reminder: ${b.event_name} tomorrow at ${formatTime(b.start_time)}`,
@@ -137,6 +151,7 @@ const EMAIL_BUILDERS = {
   confirmation: confirmationEmail,
   cancellation: cancellationEmail,
   reschedule: rescheduledEmail,
+  reassigned: reassignedEmail,
   reminder: reminderEmail,
 };
 
@@ -189,7 +204,10 @@ async function notify(booking, kind) {
     );
   }
 
-  const template = wati.current().templates[kind];
+  // A change of teacher reads like a moved appointment on WhatsApp: same four
+  // parameters, and the appointment line already names who they will see.
+  const templates = wati.current().templates;
+  const template = templates[kind] || (kind === 'reassigned' ? templates.reschedule : undefined);
   if (booking.parent_phone) {
     tasks.push(
       sendTemplate(booking.parent_phone, template, whatsappParams(booking))
@@ -335,7 +353,31 @@ async function notifyStaffCancelled(booking) {
   }
 }
 
+/** One email to the teacher who has just been handed a schedule. */
+async function notifyStaffTransfer(schedule, { from, booked, parentsTold = true }) {
+  if (!schedule || !schedule.staff_email) return;
+  const cfg = mail.current();
+  if (!cfg.enabled) return;
+  const msg = {
+    to: schedule.staff_email,
+    subject: `A schedule has been handed to you: ${schedule.display_name}`,
+    html: shell(
+      'A schedule is now yours',
+      `<p style="margin:0 0 16px;font-size:15px">The office has moved <strong>${escapeHtml(schedule.display_name)}</strong> (${escapeHtml(schedule.event_name)}) to you${from ? ` from ${escapeHtml(from)}` : ''}.
+       It comes with ${booked} booked appointment${booked === 1 ? '' : 's'}${booked ? (parentsTold ? ' - the parents have been told they will see you.' : ' - the parents have not been told yet.') : '.'}</p>
+       <p style="margin:18px 0 0"><a href="${config.baseUrl}/staff" style="color:#0b3d5c">Open your schedules</a></p>`
+    ),
+  };
+  try {
+    const r = await sendMail(msg);
+    log(null, 'email', 'staff_transfer', schedule.staff_email, r.status, r.detail);
+  } catch (err) {
+    log(null, 'email', 'staff_transfer', schedule.staff_email, 'failed', err.message);
+  }
+}
+
 module.exports = {
+  notifyStaffTransfer,
   notify,
   notifyAsync,
   notifyBookingGroup,

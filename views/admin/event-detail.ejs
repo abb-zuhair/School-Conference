@@ -445,6 +445,7 @@
               <a href="/staff/schedule/<%= s.id %>"><strong><%= s.display_name %></strong></a>
               <div class="btn-row" style="margin-top:4px">
                 <a class="btn sm ghost" href="/staff/schedule/<%= s.id %>#add-slots">Add slots</a>
+                <a class="btn sm ghost" href="/admin/schedules/<%= s.id %>/transfer" title="Hand this sheet, bookings and all, to another teacher">Transfer…</a>
               </div>
             </td>
             <td class="small"><%= s.staff_name || '—' %></td>

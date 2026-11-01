@@ -262,6 +262,101 @@ function refused(r) {
   r = await req(head, 'GET', `/staff/schedule/${moving.id}`);
   check('moved back, the English head has it again', r.status === 200, `status ${r.status}`);
 
+  /* ---------------- handing a schedule to another teacher ---------------- */
+  // Sara's Grade 5B sheet — slots, the booking on it, and the class — goes to
+  // Laura. Then it comes back, so the seed is as it was.
+  const sara = db.prepare('SELECT id FROM staff WHERE email = ?').get(TEACHER);
+  const laura = db.prepare('SELECT id FROM staff WHERE email = ?').get('laura.bennett@example.aca.edu.kw');
+  const slotCount = db.prepare('SELECT COUNT(*) AS n FROM slots WHERE schedule_id = ?').get(moving.id).n;
+  const bookedSlot = db.prepare('SELECT * FROM slots WHERE id = ?').get(movingSlot.id);
+  const transferUrl = `/admin/schedules/${moving.id}/transfer`;
+  const ownerOf = () => db.prepare('SELECT staff_id FROM schedules WHERE id = ?').get(moving.id).staff_id;
+
+  r = await req(admin, 'GET', `/admin/events/${moving.event_id}`);
+  check('the event page offers Transfer per schedule', r.text.includes(transferUrl));
+
+  r = await req(admin, 'GET', transferUrl);
+  check('the transfer page opens', r.status === 200, `status ${r.status}`);
+  check('it lists Laura as a choice', r.text.includes('Laura Bennett'));
+  check('but not Sara, who already has it', !r.text.includes(`value="${sara.id}"`));
+  check('nor anyone from the other campus', !r.text.includes('Omar Khalid'));
+
+  r = await req(admin, 'GET', `${transferUrl}?to=${laura.id}`);
+  check('choosing Laura shows the hand-over form', r.text.includes('Hand the schedule to Laura Bennett'));
+  check('with the booked count', r.text.includes('is free at every booked time'));
+
+  r = await req(head, 'GET', transferUrl);
+  check('a department head cannot transfer (admin only)', refused(r), `status ${r.status}`);
+
+  r = await req(admin, 'POST', transferUrl, { staff_id: String(sara.id) });
+  check('handing it to the teacher who has it is refused', r.status === 302 && ownerOf() === sara.id);
+  r = await req(admin, 'POST', transferUrl, { staff_id: String(omar.id) });
+  check('handing it across campuses is refused', ownerOf() === sara.id);
+
+  // A clash: Laura is already booked, on her own sheet, at the moving booking's time.
+  const lauraSheet = db.prepare('SELECT id FROM schedules WHERE staff_id = ? AND event_id = ?').get(laura.id, moving.event_id);
+  check('Laura has her own sheet in the event', Boolean(lauraSheet));
+  let clashSlotId = (db
+    .prepare('SELECT id FROM slots WHERE schedule_id = ? AND slot_date = ? AND start_time = ?')
+    .get(lauraSheet.id, bookedSlot.slot_date, bookedSlot.start_time) || {}).id;
+  let madeSlot = false;
+  if (!clashSlotId) {
+    clashSlotId = db
+      .prepare('INSERT INTO slots (schedule_id, slot_date, start_time, end_time, blocked) VALUES (?, ?, ?, ?, 0)')
+      .run(lauraSheet.id, bookedSlot.slot_date, bookedSlot.start_time, bookedSlot.end_time).lastInsertRowid;
+    madeSlot = true;
+  }
+  const clashBooking = db
+    .prepare(
+      `INSERT INTO bookings (slot_id, event_id, schedule_id, parent_name, parent_email, token, status)
+       VALUES (?, ?, ?, 'Clash Parent', 'clash@example.com', ?, 'booked')`
+    )
+    .run(clashSlotId, moving.event_id, lauraSheet.id, `clash-${Date.now()}`);
+
+  r = await req(admin, 'GET', `${transferUrl}?to=${laura.id}`);
+  check('the page warns about the clash', r.text.includes('is already booked at 1 of these times'));
+  r = await req(admin, 'POST', transferUrl, { staff_id: String(laura.id), notify: '1' });
+  check('a clash without the tick is refused', r.status === 302 && ownerOf() === sara.id);
+  check('and sends the admin back to the warning', String(r.location).includes(`to=${laura.id}`));
+
+  db.prepare('DELETE FROM bookings WHERE id = ?').run(clashBooking.lastInsertRowid);
+  if (madeSlot) db.prepare('DELETE FROM slots WHERE id = ?').run(clashSlotId);
+
+  const notesBefore = db.prepare('SELECT COUNT(*) AS n FROM notifications WHERE kind = ?').get('reassigned').n;
+  r = await req(admin, 'POST', transferUrl, { staff_id: String(laura.id), move_class: '1', notify: '1' });
+  check('the hand-over is accepted', r.status === 302 && String(r.location).includes(`/admin/events/${moving.event_id}`), `status ${r.status}`);
+  check('the schedule is Laura’s now', ownerOf() === laura.id);
+  check('every slot went with it', db.prepare('SELECT COUNT(*) AS n FROM slots WHERE schedule_id = ?').get(moving.id).n === slotCount);
+  const kept = db.prepare('SELECT status, slot_id FROM bookings WHERE id = ?').get(held.lastInsertRowid);
+  check('the booking is still booked, on the same slot', kept.status === 'booked' && kept.slot_id === movingSlot.id);
+  check('the class followed', db.prepare('SELECT staff_id FROM classes WHERE id = (SELECT class_id FROM schedules WHERE id = ?)').get(moving.id).staff_id === laura.id);
+  await new Promise((rs) => setTimeout(rs, 400));
+  check('the parent was told of the new teacher', db.prepare('SELECT COUNT(*) AS n FROM notifications WHERE kind = ?').get('reassigned').n > notesBefore);
+  check('the audit trail has it', Boolean(db.prepare("SELECT id FROM audit_log WHERE action = 'schedule_transfer' ORDER BY id DESC LIMIT 1").get()));
+
+  const lauraJar = await signIn('laura.bennett@example.aca.edu.kw', 'LauraPass123');
+  r = await req(lauraJar, 'GET', `/staff/schedule/${moving.id}`);
+  check('Laura opens the sheet', r.status === 200, `status ${r.status}`);
+  const saraJar = await signIn(TEACHER, 'SaraPass123');
+  r = await req(saraJar, 'GET', `/staff/schedule/${moving.id}`);
+  check('Sara no longer can', r.status === 403, `status ${r.status}`);
+  r = await req(jar(), 'GET', `/e/ptc-term1-hawally/d/${english.id}`);
+  check('parents see it under Laura', /Laura Bennett[\s\S]*Grade 5B — English|Grade 5B — English[\s\S]*Laura Bennett/.test(r.text));
+
+  // Back to Sara, without the class tick: the sheet returns, the class does not.
+  r = await req(admin, 'POST', transferUrl, { staff_id: String(sara.id) });
+  check('handed back to Sara', ownerOf() === sara.id);
+  check('the class stays where it was when the tick is off', db.prepare('SELECT staff_id FROM classes WHERE id = (SELECT class_id FROM schedules WHERE id = ?)').get(moving.id).staff_id === laura.id);
+  db.prepare('UPDATE classes SET staff_id = ? WHERE id = (SELECT class_id FROM schedules WHERE id = ?)').run(sara.id, moving.id);
+
+  // The Classes page's bulk reassign moves the sheet as well as the class.
+  const classId = db.prepare('SELECT class_id FROM schedules WHERE id = ?').get(moving.id).class_id;
+  r = await req(admin, 'POST', '/admin/classes/bulk', { action: 'reassign', staff_id: String(laura.id), class_ids: String(classId) });
+  check('bulk class reassign is accepted', r.status === 302, `status ${r.status}`);
+  check('the schedule follows the class', ownerOf() === laura.id);
+  await req(admin, 'POST', '/admin/classes/bulk', { action: 'reassign', staff_id: String(sara.id), class_ids: String(classId) });
+  check('and back again', ownerOf() === sara.id);
+
   /* ---------------- an ordinary teacher is unchanged ---------------- */
   const teacher = await signIn(TEACHER, 'SaraPass123');
   r = await req(teacher, 'GET', '/staff/department');

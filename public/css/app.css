@@ -386,3 +386,4 @@ form.move-dept select { font: inherit; font-size: .85rem; padding: 5px 6px; bord
 .picker-tools { align-items: center; }
 .picker-tools .picker-filter { flex: 1 1 220px; min-width: 160px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
 .picker-tools .picker-count { white-space: nowrap; }
+.alert.warn { background: #fff8e6; border-color: #efd9a4; color: #7a5200; }

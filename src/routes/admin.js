@@ -600,8 +600,13 @@ router.post('/classes/bulk', (req, res) => {
       return res.redirect(back);
     }
     if (!auth.canAccessCampus(user, target.campus_id)) return res.status(403).send('Not allowed');
-    db.prepare(`UPDATE classes SET staff_id = ? WHERE id IN (${placeholders})`).run(target.id, ...ids);
-    auth.audit(user.id, 'classes_bulk_reassign', { ids, staffId: target.id });
+    const moved = db.transaction(() => {
+      db.prepare(`UPDATE classes SET staff_id = ? WHERE id IN (${placeholders})`).run(target.id, ...ids);
+      // The sheets for those classes go too - otherwise a published event
+      // would keep showing, and be owned by, the teacher who no longer has the class.
+      return db.prepare(`UPDATE schedules SET staff_id = ? WHERE class_id IN (${placeholders})`).run(target.id, ...ids).changes;
+    })();
+    auth.audit(user.id, 'classes_bulk_reassign', { ids, staffId: target.id, schedulesMoved: moved });
     req.flash('success', `${ids.length} class(es) moved to ${target.name}. Existing schedules follow the class, so published events stay intact.`);
     return res.redirect(back);
   }
@@ -1016,6 +1021,148 @@ router.post('/schedules/:id/move', (req, res) => {
       'Its bookings are untouched; parents now find it there, and that department’s head can manage it.'
   );
   return res.redirect(back);
+});
+
+/* ----------------- handing a schedule to another teacher ----------------- *
+ * A teacher leaves, falls ill, or a class changes hands mid-term. The sheet
+ * goes across whole: every slot, every booking, the room and the notes. The
+ * class goes with it unless told otherwise, so the Classes page and the sheet
+ * never disagree about who teaches it.
+ * ---------------------------------------------------------------------- */
+
+/** Everything the confirmation page and the move both need to know. */
+function transferFacts(schedule, target) {
+  const counts = db
+    .prepare(
+      `SELECT COUNT(*) AS slots,
+              (SELECT COUNT(*) FROM bookings b JOIN slots s2 ON s2.id = b.slot_id
+                WHERE s2.schedule_id = ? AND b.status = 'booked') AS booked
+       FROM slots WHERE schedule_id = ?`
+    )
+    .get(schedule.id, schedule.id);
+
+  // Times the new teacher is already booked for on their own sheets in this
+  // event, at the same date and time as a booking on the moving sheet.
+  let clashes = 0;
+  if (target) {
+    clashes = db
+      .prepare(
+        `SELECT COUNT(*) AS n
+         FROM bookings b JOIN slots s ON s.id = b.slot_id
+         WHERE b.status = 'booked' AND s.schedule_id = ?
+           AND EXISTS (
+             SELECT 1 FROM bookings b2
+             JOIN slots s2 ON s2.id = b2.slot_id
+             JOIN schedules sc2 ON sc2.id = s2.schedule_id
+             WHERE b2.status = 'booked' AND sc2.staff_id = ? AND sc2.event_id = ? AND sc2.id != ?
+               AND s2.slot_date = s.slot_date
+               AND s2.start_time < s.end_time AND s.start_time < s2.end_time)`
+      )
+      .get(schedule.id, target.id, schedule.event_id, schedule.id).n;
+  }
+  return { slots: counts.slots, booked: counts.booked, clashes };
+}
+
+function candidateTeachers(schedule) {
+  return db
+    .prepare(
+      `SELECT id, name, title, department_id FROM staff
+       WHERE campus_id = ? AND active = 1 AND role IN ('teacher','desk','campus_admin','dept_head') AND id != ?
+       ORDER BY name`
+    )
+    .all(schedule.campus_id, schedule.staff_id || 0);
+}
+
+router.get('/schedules/:id/transfer', (req, res) => {
+  const user = auth.currentUser(req);
+  const schedule = sched.getSchedule(Number(req.params.id));
+  if (!schedule) return res.status(404).render('error', { title: 'Not found', status: 404, message: 'Schedule not found.' });
+  if (!auth.canAccessCampus(user, schedule.campus_id)) return res.status(403).send('Not allowed');
+  const targetId = Number(req.query.to) || null;
+  const target = targetId ? auth.findById(targetId) : null;
+  return res.render('admin/schedule-transfer', {
+    title: `Transfer ${schedule.display_name}`,
+    schedule,
+    teachers: candidateTeachers(schedule),
+    target,
+    facts: transferFacts(schedule, target),
+  });
+});
+
+router.post('/schedules/:id/transfer', (req, res) => {
+  const user = auth.currentUser(req);
+  const schedule = sched.getSchedule(Number(req.params.id));
+  if (!schedule) return res.redirect('/admin');
+  if (!auth.canAccessCampus(user, schedule.campus_id)) return res.status(403).send('Not allowed');
+  const back = `/admin/schedules/${schedule.id}/transfer`;
+
+  const target = auth.findById(Number(req.body.staff_id));
+  if (!target || !target.active) {
+    req.flash('error', 'Choose the teacher to hand this schedule to.');
+    return res.redirect(back);
+  }
+  if (Number(target.campus_id) !== Number(schedule.campus_id)) {
+    req.flash('error', `${target.name} is on another campus. A schedule stays on its event's campus.`);
+    return res.redirect(back);
+  }
+  if (Number(target.id) === Number(schedule.staff_id)) {
+    req.flash('error', `${target.name} already has this schedule.`);
+    return res.redirect(back);
+  }
+
+  const facts = transferFacts(schedule, target);
+  if (facts.clashes > 0 && !asBool(req.body.accept_clashes)) {
+    req.flash(
+      'error',
+      `${target.name} is already booked at ${facts.clashes} of these times on another sheet. Tick that you understand, or pick someone else.`
+    );
+    return res.redirect(`${back}?to=${target.id}`);
+  }
+
+  const moveClass = asBool(req.body.move_class) && schedule.class_id;
+  const previousName = schedule.staff_name || 'the previous teacher';
+
+  db.transaction(() => {
+    db.prepare('UPDATE schedules SET staff_id = ? WHERE id = ?').run(target.id, schedule.id);
+    if (moveClass) db.prepare('UPDATE classes SET staff_id = ? WHERE id = ?').run(target.id, schedule.class_id);
+  })();
+
+  auth.audit(user.id, 'schedule_transfer', {
+    scheduleId: schedule.id,
+    from: schedule.staff_id,
+    to: target.id,
+    classMoved: Boolean(moveClass),
+    bookings: facts.booked,
+    clashes: facts.clashes,
+  });
+
+  // The families booked on it are seeing someone else now; say so.
+  const { notifyAsync, notifyStaffTransfer } = require('../services/notify');
+  const tellParents = asBool(req.body.notify) && facts.booked > 0;
+  if (tellParents) {
+    const rows = db
+      .prepare(
+        `SELECT b.id FROM bookings b JOIN slots s ON s.id = b.slot_id
+         WHERE s.schedule_id = ? AND b.status = 'booked'`
+      )
+      .all(schedule.id);
+    for (const row of rows) {
+      const booking = sched.bookingById(row.id);
+      if (booking) notifyAsync({ ...booking, previous_teacher: previousName }, 'reassigned');
+    }
+  }
+  notifyStaffTransfer(sched.getSchedule(schedule.id), { from: previousName, booked: facts.booked, parentsTold: tellParents }).catch(() => {});
+
+  req.flash(
+    'success',
+    `“${schedule.display_name}” is now ${target.name}'s` +
+      (facts.booked ? `, with its ${facts.booked} booking(s)` : '') +
+      (facts.slots ? ` and ${facts.slots} slot(s)` : '') +
+      '.' +
+      (moveClass ? ' The class moved with it.' : '') +
+      (asBool(req.body.notify) && facts.booked ? ' The parents have been told who they will see.' : '')
+  );
+  return res.redirect(`/admin/events/${schedule.event_id}`);
 });
 
 router.post('/schedules/:id/delete', (req, res) => {
