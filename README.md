@@ -47,6 +47,7 @@ npm run family       # several children in one booking, and the two ways the rul
 npm run sso          # Entra sign-in against a mock login host — starts its own instance
 npm run messaging    # WhatsApp templates against a mock WATI host
 npm run email        # SMTP settings and teacher copies against a local SMTP sink
+npm run activity     # the activity log: what is recorded, the page, filters, CSV, campus scoping
 ```
 
 `npm run smoke`, `features`, `department`, `slots` and `family` each want a freshly seeded
@@ -124,6 +125,7 @@ What a head cannot do is the point of the role. No other department, no other ca
 - Reports: fill rate per teacher, all bookings, bookings CSV, open-slots CSV, resend a confirmation.
 - **Deleting.** A schedule with no bookings deletes outright; one with live bookings needs an explicit tick to cancel them, and parents are notified by default. Deleting a whole **event** is admin-only and behind a confirmation page that shows how many schedules, slots and bookings go with it and makes you type the event's name. Closing or archiving is offered first — that stops new sign-ups while keeping the history and parents' existing links working.
 - Message log showing every email and WhatsApp attempt with its result.
+- **Activity log** (Admin › Activity): every change anyone makes, with who, when (school time) and what — sign-ins, staff and class edits (field by field, old → new), events, schedules, slots, settings, backups, and every parent booking or cancellation under the parent's name. Filter by person, by kind of change, by exact action, by date, or search the details; download the result as CSV. A campus admin sees their own campus only. Names and the request address are written down at the time, so a renamed or deleted account still reads correctly. Records are kept for good and travel with the database backup.
 
 ---
 

@@ -3,6 +3,7 @@ const express = require('express');
 const { db } = require('../db');
 const config = require('../config');
 const sched = require('../lib/scheduling');
+const auth = require('../lib/auth');
 const { notifyAsync, notifyBookingGroupAsync, notifyStaff } = require('../services/notify');
 const h = require('../lib/helpers');
 const {
@@ -534,6 +535,12 @@ router.post('/e/:slug/confirm', loadEvent, requireOpenEvent, async (req, res, ne
 
     // One WhatsApp covering the whole submission, one email per appointment.
     const created = result.ids.map((id) => sched.bookingById(id)).filter(Boolean);
+    for (const bk of created) {
+      auth.audit(null, 'booking_create', {
+        bookingId: bk.id, eventId: event.id, scheduleId: bk.schedule_id, teacher: bk.staff_name,
+        student: bk.student_name || null, slot: `${bk.slot_date} ${bk.start_time}`, parentEmail: bk.parent_email || null,
+      }, { actor: `${details.parent_name || bk.parent_name} (parent)` });
+    }
     notifyBookingGroupAsync(created);
     for (const booking of created) notifyStaff(booking).catch(() => {});
 
@@ -584,6 +591,10 @@ router.post('/booking/:token/cancel', (req, res) => {
   }
   sched.cancelBooking(booking.id, 'parent');
   const updated = sched.bookingByToken(booking.token);
+  auth.audit(null, 'booking_cancel', {
+    bookingId: booking.id, eventId: booking.event_id, scheduleId: booking.schedule_id, teacher: booking.staff_name,
+    student: booking.student_name || null, slot: `${booking.slot_date} ${booking.start_time}`, by: 'parent',
+  }, { actor: `${booking.parent_name} (parent)` });
   notifyAsync(updated, 'cancellation');
   req.flash('success', 'Your appointment has been cancelled.');
   return res.redirect(`/booking/${booking.token}`);

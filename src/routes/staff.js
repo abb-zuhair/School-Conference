@@ -326,17 +326,21 @@ router.post('/slot/:slotId/:action', (req, res) => {
   const booked = db.prepare("SELECT COUNT(*) AS n FROM bookings WHERE slot_id = ? AND status = 'booked'").get(slot.id).n;
   const action = req.params.action;
 
+  const note = (what, extra = {}) =>
+    auth.audit(user.id, what, { slotId: slot.id, scheduleId: slot.schedule_id, slot: `${slot.slot_date} ${slot.start_time}`, ...extra });
   if (action === 'block') {
     if (booked > 0) req.flash('error', 'That slot already has a booking — cancel it first.');
-    else db.prepare('UPDATE slots SET blocked = 1 WHERE id = ?').run(slot.id);
+    else { db.prepare('UPDATE slots SET blocked = 1 WHERE id = ?').run(slot.id); note('slot_block'); }
   } else if (action === 'unblock') {
     db.prepare('UPDATE slots SET blocked = 0 WHERE id = ?').run(slot.id);
+    note('slot_unblock');
   } else if (action === 'delete') {
     if (booked > 0) req.flash('error', 'That slot already has a booking — cancel it first.');
-    else db.prepare('DELETE FROM slots WHERE id = ?').run(slot.id);
+    else { db.prepare('DELETE FROM slots WHERE id = ?').run(slot.id); note('slot_delete'); }
   } else if (action === 'capacity') {
     const cap = Math.max(1, Number(req.body.capacity || 1));
     db.prepare('UPDATE slots SET capacity = ? WHERE id = ?').run(cap, slot.id);
+    note('slot_capacity', { from: slot.capacity, to: cap });
   }
   res.redirect(`/staff/schedule/${slot.schedule_id}`);
 });
@@ -370,10 +374,14 @@ router.post('/booking/:id/:action', (req, res) => {
     sched.cancelBooking(booking.id, own ? 'staff' : 'admin');
     const updated = sched.bookingById(booking.id);
     notifyAsync(updated, 'cancellation');
-    auth.audit(user.id, 'booking_cancel', { bookingId: booking.id });
+    auth.audit(user.id, 'booking_cancel', {
+      bookingId: booking.id, eventId: booking.event_id, scheduleId: booking.schedule_id, teacher: booking.staff_name,
+      parent: booking.parent_name, student: booking.student_name || null, slot: `${booking.slot_date} ${booking.start_time}`, by: own ? 'teacher' : 'office',
+    });
     req.flash('success', 'Booking cancelled and the parent has been notified.');
   } else if (['attended', 'no_show', 'booked'].includes(action)) {
     db.prepare('UPDATE bookings SET status = ? WHERE id = ?').run(action, booking.id);
+    auth.audit(user.id, 'booking_status', { bookingId: booking.id, scheduleId: booking.schedule_id, parent: booking.parent_name, slot: `${booking.slot_date} ${booking.start_time}`, from: booking.status, to: action });
   }
   const back = req.get('referer') || `/staff/schedule/${booking.schedule_id}`;
   res.redirect(back);

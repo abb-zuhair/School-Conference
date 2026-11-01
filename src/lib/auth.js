@@ -1,6 +1,14 @@
 'use strict';
 const bcrypt = require('bcryptjs');
+const { AsyncLocalStorage } = require('node:async_hooks');
 const { db } = require('../db');
+
+/** The request behind the current call, so audit() can note the address without every caller passing it. */
+const requestContext = new AsyncLocalStorage();
+function withRequest(req, res, next) {
+  requestContext.run({ ip: req.ip || null }, next);
+}
+
 const config = require('../config');
 
 const ROLES = ['admin', 'campus_admin', 'dept_head', 'teacher', 'desk'];
@@ -130,12 +138,24 @@ function departmentScope(user) {
   return user && user.role === 'dept_head' ? user.department_id || null : null;
 }
 
-function audit(staffId, action, detail) {
+/**
+ * One line in the activity log. `staffId` is the signed-in account, or null for
+ * a parent / the command line; `extra.actor` names the doer when there is no
+ * account (a parent's name), `extra.ip` is the request address when known.
+ */
+function audit(staffId, action, detail, extra = {}) {
   try {
-    db.prepare('INSERT INTO audit_log (staff_id, action, detail) VALUES (?, ?, ?)').run(
+    let actor = extra.actor || null;
+    if (!actor && staffId) {
+      const who = db.prepare('SELECT name, email FROM staff WHERE id = ?').get(staffId);
+      if (who) actor = who.name || who.email;
+    }
+    db.prepare('INSERT INTO audit_log (staff_id, action, detail, actor, ip) VALUES (?, ?, ?, ?, ?)').run(
       staffId || null,
       action,
-      typeof detail === 'string' ? detail : JSON.stringify(detail || {})
+      typeof detail === 'string' ? detail : JSON.stringify(detail || {}),
+      actor,
+      extra.ip || (requestContext.getStore() || {}).ip || null
     );
   } catch (_) {
     /* non-fatal */
@@ -143,6 +163,7 @@ function audit(staffId, action, detail) {
 }
 
 module.exports = {
+  withRequest,
   ROLES,
   ADMIN_ROLES,
   canManageSchedule,

@@ -387,3 +387,19 @@ form.move-dept select { font: inherit; font-size: .85rem; padding: 5px 6px; bord
 .picker-tools .picker-filter { flex: 1 1 220px; min-width: 160px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
 .picker-tools .picker-count { white-space: nowrap; }
 .alert.warn { background: #fff8e6; border-color: #efd9a4; color: #7a5200; }
+
+/* ---------------- activity log ---------------- */
+
+.activity-filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-top: 14px; }
+.activity-filters label { display: flex; flex-direction: column; gap: 4px; font-size: .8rem; color: var(--muted); font-weight: 600; margin: 0; }
+.activity-filters label.grow { flex: 1 1 220px; }
+.activity-filters select, .activity-filters input { font: inherit; font-size: .9rem; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink); min-width: 0; }
+.activity-filters input[type="search"] { width: 100%; }
+table.activity td { vertical-align: top; }
+table.activity .nowrap { white-space: nowrap; }
+table.activity .facts { display: flex; flex-wrap: wrap; gap: 4px 6px; max-width: 520px; }
+table.activity .fact { display: inline-block; background: #f1f4f7; border-radius: 6px; padding: 2px 7px; font-size: .78rem; color: var(--ink); }
+table.activity .fact .k { color: var(--muted); }
+table.activity .fact.change { background: var(--warn-bg); }
+table.activity a.act { font-weight: 600; text-decoration: none; }
+table.activity a.act:hover { text-decoration: underline; }

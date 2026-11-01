@@ -51,6 +51,13 @@ function formatShortDate(date, locale = 'en') {
 }
 
 /** '14:30' -> '2:30 PM' */
+/** A SQLite UTC stamp ('2026-11-01 12:08:43') shown in school time: 'Sun 1 Nov 2026, 3:08 PM'. */
+function formatStamp(stamp) {
+  if (!stamp) return '';
+  const dt = DateTime.fromSQL(String(stamp), { zone: 'utc' }).setZone(TZ);
+  return dt.isValid ? dt.toFormat('ccc d LLL yyyy, h:mm a') : String(stamp);
+}
+
 function formatTime(time) {
   const [h, m] = String(time).split(':').map(Number);
   if (Number.isNaN(h)) return time;
@@ -168,6 +175,7 @@ function searchKey(value) {
 
 module.exports = {
   TZ,
+  formatStamp,
   roleLabel,
   roleNote,
   ROLE_NOTES,

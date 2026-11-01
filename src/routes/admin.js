@@ -22,6 +22,7 @@ const {
   minutesToTime,
   nowLocal,
   asBool,
+  formatStamp,
   EVENT_TYPES,
   MODES,
 } = require('../lib/helpers');
@@ -134,6 +135,7 @@ router.post('/campuses/:id', (req, res) => {
     Number(req.body.sort_order || 0),
     id
   );
+  auth.audit(auth.currentUser(req).id, 'campus_update', { campusId: id, name: String(req.body.name || '').trim(), active: asBool(req.body.active) });
   req.flash('success', 'Campus updated.');
   res.redirect('/admin/campuses');
 });
@@ -146,12 +148,13 @@ router.post('/departments', (req, res) => {
     req.flash('error', 'Department name is required.');
     return res.redirect('/admin/campuses');
   }
-  db.prepare('INSERT INTO departments (campus_id, name, name_ar, sort_order) VALUES (?, ?, ?, ?)').run(
+  const made = db.prepare('INSERT INTO departments (campus_id, name, name_ar, sort_order) VALUES (?, ?, ?, ?)').run(
     campusId,
     name,
     String(req.body.name_ar || '').trim() || null,
     Number(req.body.sort_order || 0)
   );
+  auth.audit(auth.currentUser(req).id, 'department_create', { departmentId: made.lastInsertRowid, name, campusId });
   req.flash('success', `Department “${name}” added.`);
   return res.redirect('/admin/campuses');
 });
@@ -161,6 +164,7 @@ router.post('/departments/:id/delete', (req, res) => {
   if (!dept) return res.redirect('/admin/campuses');
   if (!auth.canAccessCampus(auth.currentUser(req), dept.campus_id)) return res.status(403).send('Not allowed');
   db.prepare('DELETE FROM departments WHERE id = ?').run(dept.id);
+  auth.audit(auth.currentUser(req).id, 'department_delete', { departmentId: dept.id, name: dept.name });
   req.flash('success', 'Department removed.');
   return res.redirect('/admin/campuses');
 });
@@ -213,6 +217,14 @@ function upsertStaff(body, actorId) {
       `UPDATE staff SET campus_id=@campus_id, department_id=@department_id, name=@name, name_ar=@name_ar,
        phone=@phone, title=@title, role=@role WHERE id=@id`
     ).run({ ...payload, id: existing.id });
+    // Only what actually changed goes in the log, old → new.
+    const changes = {};
+    for (const k of Object.keys(payload)) {
+      const was = existing[k] == null ? null : existing[k];
+      const now = payload[k] == null ? null : payload[k];
+      if (String(was ?? '') !== String(now ?? '')) changes[k] = { from: was, to: now };
+    }
+    auth.audit(actorId, 'staff_update', { staffId: existing.id, email, changes });
     return { id: existing.id, created: false, tempPassword: null };
   }
   const temp = token(6);
@@ -417,7 +429,11 @@ router.post('/staff/:id/reset-password', (req, res) => {
 });
 
 router.post('/staff/:id/toggle', (req, res) => {
-  db.prepare('UPDATE staff SET active = CASE active WHEN 1 THEN 0 ELSE 1 END WHERE id = ?').run(Number(req.params.id));
+  const target = auth.findById(Number(req.params.id));
+  if (!target) return res.redirect('/admin/staff');
+  if (!auth.canAccessCampus(auth.currentUser(req), target.campus_id)) return res.status(403).send('Not allowed');
+  db.prepare('UPDATE staff SET active = CASE active WHEN 1 THEN 0 ELSE 1 END WHERE id = ?').run(target.id);
+  auth.audit(auth.currentUser(req).id, target.active ? 'staff_deactivate' : 'staff_activate', { staffId: target.id, email: target.email });
   res.redirect('/admin/staff');
 });
 
@@ -497,6 +513,7 @@ router.post('/staff/import', upload.single('csv_file'), (req, res) => {
       result.errors.push(`Row ${i + 2}: ${err.message}`);
     }
   }
+  auth.audit(auth.currentUser(req).id, 'staff_import', { ...result, errors: result.errors.length });
   res.render('admin/staff-import', { title: 'Import staff & classes', result, campuses: campusesFor(req) });
 });
 
@@ -509,19 +526,23 @@ router.post('/classes', (req, res) => {
     req.flash('error', 'Pick a teacher and enter a class name.');
     return res.redirect('/admin/staff');
   }
-  db.prepare('INSERT INTO classes (staff_id, name, grade_level, room, sort_order) VALUES (?, ?, ?, ?, ?)').run(
+  const made = db.prepare('INSERT INTO classes (staff_id, name, grade_level, room, sort_order) VALUES (?, ?, ?, ?, ?)').run(
     staffId,
     name,
     String(req.body.grade_level || '').trim() || null,
     String(req.body.room || '').trim() || null,
     Number(req.body.sort_order || 0)
   );
+  auth.audit(auth.currentUser(req).id, 'class_create', { classId: made.lastInsertRowid, name, staffId });
   req.flash('success', `Class “${name}” added.`);
   return res.redirect(req.get('referer') || '/admin/staff');
 });
 
 router.post('/classes/:id/delete', (req, res) => {
-  db.prepare('DELETE FROM classes WHERE id = ?').run(Number(req.params.id));
+  const cls = db.prepare('SELECT id, name, staff_id FROM classes WHERE id = ?').get(Number(req.params.id));
+  if (!cls) return res.redirect(req.get('referer') || '/admin/staff');
+  db.prepare('DELETE FROM classes WHERE id = ?').run(cls.id);
+  auth.audit(auth.currentUser(req).id, 'class_delete', { classId: cls.id, name: cls.name, staffId: cls.staff_id });
   req.flash('success', 'Class removed.');
   res.redirect(req.get('referer') || '/admin/staff');
 });
@@ -774,13 +795,7 @@ router.get('/events/:id', loadEvent, (req, res) => {
 });
 
 router.post('/events/:id', loadEvent, (req, res) => {
-  db.prepare(
-    `UPDATE events SET name=@name, name_ar=@name_ar, description=@description, instructions=@instructions,
-      instructions_ar=@instructions_ar, opens_at=@opens_at, closes_at=@closes_at, max_per_student=@max_per_student,
-      prevent_overlap=@prevent_overlap, allow_cancel=@allow_cancel, cancel_cutoff_hrs=@cancel_cutoff_hrs,
-      require_phone=@require_phone, collect_student=@collect_student, allow_compare=@allow_compare
-      WHERE id=@id`
-  ).run({
+  const next = {
     id: req.event.id,
     name: String(req.body.name || '').trim(),
     name_ar: String(req.body.name_ar || '').trim() || null,
@@ -796,7 +811,20 @@ router.post('/events/:id', loadEvent, (req, res) => {
     require_phone: asBool(req.body.require_phone) ? 1 : 0,
     collect_student: asBool(req.body.collect_student) ? 1 : 0,
     allow_compare: asBool(req.body.allow_compare) ? 1 : 0,
-  });
+  };
+  db.prepare(
+    `UPDATE events SET name=@name, name_ar=@name_ar, description=@description, instructions=@instructions,
+      instructions_ar=@instructions_ar, opens_at=@opens_at, closes_at=@closes_at, max_per_student=@max_per_student,
+      prevent_overlap=@prevent_overlap, allow_cancel=@allow_cancel, cancel_cutoff_hrs=@cancel_cutoff_hrs,
+      require_phone=@require_phone, collect_student=@collect_student, allow_compare=@allow_compare
+      WHERE id=@id`
+  ).run(next);
+  const changes = {};
+  for (const k of Object.keys(next)) {
+    if (k === 'id') continue;
+    if (String(req.event[k] ?? '') !== String(next[k] ?? '')) changes[k] = { from: req.event[k] ?? null, to: next[k] };
+  }
+  auth.audit(auth.currentUser(req).id, 'event_update', { eventId: req.event.id, name: next.name, changes });
   req.flash('success', 'Event settings saved.');
   res.redirect(`/admin/events/${req.event.id}`);
 });
@@ -944,7 +972,7 @@ router.post('/events/:id/schedules', loadEvent, (req, res) => {
     Number(req.body.department_id) ||
     (staffId ? (auth.findById(staffId) || {}).department_id : null) ||
     null;
-  db.prepare(
+  const made = db.prepare(
     `INSERT INTO schedules (event_id, department_id, staff_id, class_id, label, mode, location, meeting_link, notes)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
@@ -958,6 +986,7 @@ router.post('/events/:id/schedules', loadEvent, (req, res) => {
     String(req.body.meeting_link || '').trim() || null,
     String(req.body.notes || '').trim() || null
   );
+  auth.audit(auth.currentUser(req).id, 'schedule_create', { scheduleId: made.lastInsertRowid, eventId: req.event.id, staffId, classId, label: String(req.body.label || '').trim() || null });
   req.flash('success', 'Schedule added.');
   res.redirect(`/admin/events/${req.event.id}`);
 });
@@ -1755,6 +1784,68 @@ router.get('/notifications', (req, res) => {
   res.render('admin/notifications', { title: 'Message log', rows });
 });
 
+/* ---------------------------- activity log ---------------------------- *
+ * Who changed what, and when. Every admin, teacher, head and parent action
+ * lands here through auth.audit(); a campus admin sees their own campus.
+ * ---------------------------------------------------------------------- */
+
+function activityFilters(req) {
+  return {
+    who: String(req.query.who || ''),
+    group: String(req.query.group || ''),
+    action: String(req.query.action || ''),
+    from: String(req.query.from || ''),
+    to: String(req.query.to || ''),
+    q: String(req.query.q || '').trim(),
+    page: Number(req.query.page) || 1,
+  };
+}
+
+router.get('/activity', (req, res) => {
+  const activity = require('../lib/activity');
+  const scope = auth.campusScope(auth.currentUser(req));
+  const filters = activityFilters(req);
+  const result = activity.query(filters, scope);
+  const f = campusFilter(req, 'campus_id');
+  const people = db
+    .prepare(`SELECT id, name, email, role FROM staff WHERE ${f.sql} ORDER BY name`)
+    .all(...f.params);
+  const qs = (over) => {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries({ ...filters, ...over })) if (v && !(k === 'page' && Number(v) === 1)) p.set(k, v);
+    const str = p.toString();
+    return str ? `?${str}` : '';
+  };
+  res.render('admin/activity', {
+    title: 'Activity log',
+    filters,
+    result,
+    people,
+    groups: activity.GROUPS,
+    actions: Object.keys(activity.LABELS).map((k) => ({ key: k, label: activity.label(k) })),
+    qs,
+  });
+});
+
+router.get('/activity/export.csv', (req, res) => {
+  const activity = require('../lib/activity');
+  const scope = auth.campusScope(auth.currentUser(req));
+  const rows = activity.exportRows(activityFilters(req), scope);
+  const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const lines = ['When,Who,Email,Action,What,Details,IP'];
+  for (const r of rows) {
+    lines.push(
+      [formatStamp(r.created_at), r.who, r.staff_email || '', r.action, r.label, r.facts.map((x) => `${x.k}: ${x.v}`).join('; '), r.ip || '']
+        .map(cell)
+        .join(',')
+    );
+  }
+  auth.audit(auth.currentUser(req).id, 'activity_export', { rows: rows.length });
+  res.set('Content-Type', 'text/csv; charset=utf-8');
+  res.set('Content-Disposition', `attachment; filename="activity-${new Date().toISOString().slice(0, 10)}.csv"`);
+  res.send(`\ufeff${lines.join('\n')}`);
+});
+
 router.post('/notifications/test-reminders', auth.requireRole('admin'), async (req, res) => {
   const out = await runReminders();
   req.flash('success', `Reminder run finished — ${out.sent} message set(s) processed.`);
@@ -2014,6 +2105,7 @@ router.post('/bookings/:id/resend', (req, res) => {
   const booking = sched.bookingById(Number(req.params.id));
   if (!booking) return res.status(404).send('Not found');
   notifyAsync(booking, 'confirmation');
+  auth.audit(auth.currentUser(req).id, 'booking_resend', { bookingId: booking.id, parent: booking.parent_name });
   req.flash('success', 'Confirmation re-sent.');
   return res.redirect(req.get('referer') || '/admin');
 });

@@ -1,0 +1,107 @@
+<%- include('../partials/head') %>
+<%- include('../partials/admin-nav') %>
+
+<div class="card">
+  <div class="card-head">
+    <div>
+      <h1>Activity log</h1>
+      <div class="muted small">
+        Every change anyone makes — the office, teachers, department heads and parents — with who did it and when.
+        <%= result.total %> record<%= result.total === 1 ? '' : 's' %><%= (filters.who || filters.group || filters.action || filters.from || filters.to || filters.q) ? ' match' : '' %>.
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <a class="btn sm ghost" href="/admin/activity/export.csv<%= qs({ page: '' }) %>">Download CSV</a>
+  </div>
+
+  <form method="get" action="/admin/activity" class="activity-filters">
+    <label>Who
+      <select name="who">
+        <option value="">Everyone</option>
+        <option value="staff" <%= filters.who === 'staff' ? 'selected' : '' %>>All staff</option>
+        <option value="parents" <%= filters.who === 'parents' ? 'selected' : '' %>>Parents</option>
+        <optgroup label="A person">
+          <% people.forEach(function (p) { %>
+            <option value="<%= p.id %>" <%= String(filters.who) === String(p.id) ? 'selected' : '' %>><%= p.name %> (<%= p.role.replace('_', ' ') %>)</option>
+          <% }); %>
+        </optgroup>
+      </select>
+    </label>
+    <label>What
+      <select name="group">
+        <option value="">Everything</option>
+        <% groups.forEach(function (g) { %>
+          <option value="<%= g.key %>" <%= filters.group === g.key ? 'selected' : '' %>><%= g.label %></option>
+        <% }); %>
+        <option value="other" <%= filters.group === 'other' ? 'selected' : '' %>>Other</option>
+      </select>
+    </label>
+    <label>Exactly
+      <select name="action">
+        <option value="">Any action</option>
+        <% actions.forEach(function (a) { %>
+          <option value="<%= a.key %>" <%= filters.action === a.key ? 'selected' : '' %>><%= a.label %></option>
+        <% }); %>
+      </select>
+    </label>
+    <label>From <input type="date" name="from" value="<%= filters.from %>"></label>
+    <label>To <input type="date" name="to" value="<%= filters.to %>"></label>
+    <label class="grow">Search
+      <input type="search" name="q" value="<%= filters.q %>" placeholder="a name, an email, a class, a slot time…">
+    </label>
+    <div class="btn-row">
+      <button class="btn sm" type="submit">Filter</button>
+      <% if (filters.who || filters.group || filters.action || filters.from || filters.to || filters.q) { %>
+        <a class="btn sm ghost" href="/admin/activity">Clear</a>
+      <% } %>
+    </div>
+  </form>
+
+  <% if (!result.rows.length) { %>
+    <p class="muted small" style="margin-top:14px">Nothing recorded<%= (filters.who || filters.group || filters.action || filters.from || filters.to || filters.q) ? ' for those filters' : ' yet' %>.</p>
+  <% } else { %>
+  <div class="table-wrap" style="margin-top:14px">
+    <table class="data activity">
+      <thead><tr><th>When (<%= h.TZ %>)</th><th>Who</th><th>What</th><th>Details</th><th>From</th></tr></thead>
+      <tbody>
+        <% result.rows.forEach(function (r) { %>
+          <tr>
+            <td class="small nowrap"><%= h.formatStamp(r.created_at) %></td>
+            <td class="small">
+              <% if (r.staff_id) { %>
+                <a href="/admin/activity<%= qs({ who: r.staff_id, page: '' }) %>"><%= r.who %></a>
+                <div class="muted"><%= r.staff_email || '' %><% if (r.staff_name_now && r.actor && r.staff_name_now !== r.actor) { %> · now “<%= r.staff_name_now %>”<% } %></div>
+              <% } else { %>
+                <%= r.who %>
+              <% } %>
+            </td>
+            <td class="small">
+              <a href="/admin/activity<%= qs({ action: r.action, group: '', page: '' }) %>" class="act <%= r.group %>"><%= r.label %></a>
+            </td>
+            <td class="small facts">
+              <% r.facts.forEach(function (f) { %>
+                <span class="fact <%= f.change ? 'change' : '' %>"><span class="k"><%= f.k %></span> <%= f.v %></span>
+              <% }); %>
+            </td>
+            <td class="small mono muted"><%= r.ip || '' %></td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  </div>
+
+  <% if (result.pages > 1) { %>
+    <div class="btn-row pager" style="margin-top:14px">
+      <% if (result.page > 1) { %><a class="btn sm ghost" href="/admin/activity<%= qs({ page: result.page - 1 }) %>">‹ Newer</a><% } %>
+      <span class="small muted">Page <%= result.page %> of <%= result.pages %> · <%= result.perPage %> per page</span>
+      <% if (result.page < result.pages) { %><a class="btn sm ghost" href="/admin/activity<%= qs({ page: result.page + 1 }) %>">Older ›</a><% } %>
+    </div>
+  <% } %>
+  <% } %>
+
+  <p class="muted small" style="margin-top:16px">
+    Records are kept for good and are included in the database backup. Names are written down at the time, so an account that is later renamed or deleted still reads correctly.
+  </p>
+</div>
+
+<%- include('../partials/foot') %>

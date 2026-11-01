@@ -29,6 +29,10 @@ function migrate() {
   addColumn('events', 'allow_compare', 'INTEGER NOT NULL DEFAULT 1');
   addColumn('staff', 'entra_oid', 'TEXT');
   addColumn('staff', 'last_login_method', 'TEXT');
+  // The activity log keeps who did it as text, so a deleted account still reads.
+  addColumn('audit_log', 'actor', 'TEXT');
+  addColumn('audit_log', 'ip', 'TEXT');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at)');
 }
 
 /**

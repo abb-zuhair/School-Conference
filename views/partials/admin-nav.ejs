@@ -7,6 +7,7 @@
     <a class="btn sm <%= path === '/admin/classes' ? '' : 'ghost' %>" href="/admin/classes">Classes</a>
     <a class="btn sm <%= path === '/admin/staff/import' ? '' : 'ghost' %>" href="/admin/staff/import">Import CSV</a>
     <a class="btn sm <%= path === '/admin/notifications' ? '' : 'ghost' %>" href="/admin/notifications">Message log</a>
+    <a class="btn sm <%= path.indexOf('/admin/activity') === 0 ? '' : 'ghost' %>" href="/admin/activity">Activity</a>
     <% if (user && user.role === 'admin') { %>
       <a class="btn sm <%= path === '/admin/email' ? '' : 'ghost' %>" href="/admin/email">Email</a>
       <a class="btn sm <%= path === '/admin/messaging' ? '' : 'ghost' %>" href="/admin/messaging">WhatsApp</a>
