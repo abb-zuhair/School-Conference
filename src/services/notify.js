@@ -381,7 +381,39 @@ async function notifyStaffTransfer(schedule, { from, booked, parentsTold = true 
   }
 }
 
+/**
+ * "Find my appointments": the list goes to the address itself, never to
+ * whoever typed it. Returns the send result, or null when there is nothing.
+ */
+async function sendLookupEmail(email, rows) {
+  if (!rows.length) return null;
+  const items = rows
+    .map(
+      (r) =>
+        `<tr><td style="padding:8px 0;border-bottom:1px solid #eef2f5">
+          <strong>${escapeHtml(formatShortDate(r.slot_date))} ${escapeHtml(formatTime(r.start_time))}</strong> — ${escapeHtml(r.with_whom || '')}${r.student_name ? ` (${escapeHtml(r.student_name)})` : ''}<br>
+          <span style="color:#6b7c8c;font-size:13px">${escapeHtml(r.event_name)}${r.campus_name ? ` · ${escapeHtml(r.campus_name)}` : ''} · ${escapeHtml(r.status)}</span><br>
+          <a href="${config.baseUrl}/booking/${encodeURIComponent(r.token)}" style="color:${brandColour()};font-size:13px">View or cancel</a>
+        </td></tr>`
+    )
+    .join('');
+  const msg = {
+    to: email,
+    subject: `Your appointments — ${config.schoolName}`,
+    html: shell(
+      'Your appointments',
+      `<p style="margin:0 0 14px;font-size:15px">Someone asked for the appointments booked with this address. Here they are — each link opens that appointment, where you can cancel it if you need to.</p>
+       <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${items}</table>
+       <p style="margin:16px 0 0;font-size:13px;color:#6b7c8c">If you did not ask for this, you can ignore it; nothing has changed.</p>`
+    ),
+  };
+  const r = await sendMail(msg);
+  log(null, 'email', 'lookup', email, r.status, r.detail);
+  return r;
+}
+
 module.exports = {
+  sendLookupEmail,
   EMAIL_BUILDERS,
   notifyStaffTransfer,
   notify,

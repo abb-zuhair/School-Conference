@@ -24,7 +24,8 @@
     "family": "node test/family.js",
     "email": "node test/email.js",
     "activity": "node test/activity.js",
-    "branding": "node test/branding.js"
+    "branding": "node test/branding.js",
+    "security": "node test/security.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

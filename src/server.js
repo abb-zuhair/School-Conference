@@ -8,6 +8,7 @@ const { db, migrate, dbPath, isEphemeralStorage } = require('./db');
 const SqliteStore = require('./db/session-store');
 const auth = require('./lib/auth');
 const branding = require('./services/branding');
+const guard = require('./lib/guard');
 const helpers = require('./lib/helpers');
 const reminders = require('./services/reminders');
 
@@ -20,6 +21,7 @@ app.set('views', path.join(__dirname, '..', 'views'));
 app.set('trust proxy', config.trustProxy ? 1 : 0);
 app.disable('x-powered-by');
 
+app.use(guard.headers);
 app.use(auth.withRequest);
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(express.json({ limit: '1mb' }));
@@ -65,6 +67,9 @@ app.use((req, res, next) => {
   next();
 });
 
+// Nothing that changes state may be submitted from another site.
+app.use(guard.sameOrigin);
+
 // A member of staff still on a temporary password can only reach the change-password page.
 app.use((req, res, next) => {
   const user = res.locals.user;
@@ -86,6 +91,9 @@ app.get('/branding/logo', (req, res) => {
   const file = branding.logoPath();
   if (!file) return res.status(404).end();
   res.set('Cache-Control', 'public, max-age=86400');
+  // An image, never a document: even an SVG cannot run anything here.
+  res.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'");
+  res.set('Content-Disposition', 'inline');
   return res.sendFile(file);
 });
 

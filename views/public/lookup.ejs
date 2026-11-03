@@ -13,15 +13,22 @@
   </form>
 </div>
 
-<% if (results) { %>
+<% if (typeof sent !== 'undefined' && sent) { %>
+  <div class="card">
+    <h2>Check your inbox</h2>
+    <p>If there are appointments booked with <strong><%= email %></strong>, we have just emailed the list to that address, with a link to view or cancel each one. It can take a minute to arrive — look in the junk folder too.</p>
+    <p class="muted small">Nothing arrived? The address may differ from the one used when booking, or there may be nothing booked. Your confirmation email and WhatsApp message also carry the link.</p>
+  </div>
+<% } else if (results) { %>
   <div class="card">
     <h2><%= results.length %> appointment<%= results.length === 1 ? '' : 's' %> found</h2>
     <% if (!results.length) { %>
       <p class="muted">Nothing booked with that address. Check for a typo, or book a new time from the home page.</p>
     <% } else { %>
+      <p class="muted small">To cancel or change one, use the link in your confirmation email or WhatsApp message, or contact the office.</p>
       <div class="table-wrap">
         <table class="data">
-          <thead><tr><th>When</th><th>With</th><th>Event</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>When</th><th>With</th><th>Event</th><th>Status</th></tr></thead>
           <tbody>
             <% results.forEach(function (r) { %>
               <tr>
@@ -29,7 +36,6 @@
                 <td><%= r.with_whom %></td>
                 <td><%= r.event_name %><br><span class="muted small"><%= r.campus_name %></span></td>
                 <td><span class="badge <%= r.status === 'booked' ? 'ok' : 'muted' %>"><%= r.status %></span></td>
-                <td><a class="btn sm ghost" href="/booking/<%= r.token %>">Open</a></td>
               </tr>
             <% }); %>
           </tbody>

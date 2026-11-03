@@ -98,9 +98,27 @@ const LOGO_TYPES = {
   'image/webp': 'webp',
 };
 
+/** The file must really be what it says it is — the browser's type is only a claim. */
+function sniff(buf) {
+  if (!buf || buf.length < 12) return null;
+  if (buf.slice(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'png';
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'jpg';
+  if (buf.slice(0, 4).toString('ascii') === 'RIFF' && buf.slice(8, 12).toString('ascii') === 'WEBP') return 'webp';
+  const head = buf.slice(0, 2048).toString('utf8').replace(/^\uFEFF/, '').trim();
+  if (/^(<\?xml[^>]*>\s*)?(<!--[\s\S]*?-->\s*)*(<!DOCTYPE svg[^>]*>\s*)?<svg[\s>]/i.test(head)) return 'svg';
+  return null;
+}
+
+/** An SVG is a document: scripts, event handlers and external loads have no place in a logo. */
+function safeSvg(buf) {
+  const text = buf.toString('utf8');
+  return !/<script|<foreignObject|<iframe|<embed|<object|\son[a-z]+\s*=|javascript:|<use[^>]+href\s*=\s*["']?\s*(https?:|data:)|xlink:href\s*=\s*["']?\s*(https?:|data:)/i.test(text);
+}
+
 function saveLogo(file) {
-  const ext = LOGO_TYPES[file.mimetype];
-  if (!ext) throw new Error('Upload a PNG, JPG, SVG or WebP logo.');
+  const ext = sniff(file.buffer);
+  if (!ext || ext !== LOGO_TYPES[file.mimetype]) throw new Error('That file is not a PNG, JPG, SVG or WebP image.');
+  if (ext === 'svg' && !safeSvg(file.buffer)) throw new Error('That SVG contains scripts or external references and cannot be used as a logo.');
   fs.mkdirSync(logoDir(), { recursive: true });
   const name = `logo-${Date.now()}.${ext}`;
   fs.writeFileSync(path.join(logoDir(), name), file.buffer);
@@ -173,4 +191,4 @@ function save(form) {
   settings.set(KEYS.domain, String(form.domain || '').replace(/^@/, '').toLowerCase());
 }
 
-module.exports = { KEYS, DEFAULTS, current, themeCss, faviconDataUrl, save, saveLogo, removeLogo, logoPath, parseHex, mix, initials };
+module.exports = { sniff, safeSvg, KEYS, DEFAULTS, current, themeCss, faviconDataUrl, save, saveLogo, removeLogo, logoPath, parseHex, mix, initials };

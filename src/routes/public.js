@@ -4,7 +4,9 @@ const { db } = require('../db');
 const config = require('../config');
 const sched = require('../lib/scheduling');
 const auth = require('../lib/auth');
-const { notifyAsync, notifyBookingGroupAsync, notifyStaff } = require('../services/notify');
+const { notifyAsync, notifyBookingGroupAsync, notifyStaff, sendLookupEmail } = require('../services/notify');
+const mail = require('../services/mail');
+const guard = require('../lib/guard');
 const h = require('../lib/helpers');
 const {
   isEmail,
@@ -566,6 +568,15 @@ router.get('/confirmation/:groupToken', (req, res) => {
 
 /* --------------------- manage a single booking --------------------- */
 
+// Tokens are 128 random bits, so guessing is hopeless anyway; this just stops
+// a scanner from hammering the server with misses.
+router.use('/booking/:token', (req, res, next) => {
+  const ipKey = req.ip || 'unknown';
+  if (!guard.limits.tokenByIp.allowed(ipKey)) return res.status(429).send('Too many requests. Try again later.');
+  if (!sched.bookingByToken(req.params.token)) guard.limits.tokenByIp.hit(ipKey);
+  return next();
+});
+
 router.get('/booking/:token', (req, res) => {
   const booking = sched.bookingByToken(req.params.token);
   if (!booking) {
@@ -616,6 +627,19 @@ router.post('/lookup', (req, res) => {
       error: 'Please enter a valid email address.',
     });
   }
+  // Guessing addresses to find other families' appointments is throttled per address.
+  const ipKey = req.ip || 'unknown';
+  if (!guard.limits.lookupByIp.allowed(ipKey)) {
+    res.set('Retry-After', String(guard.limits.lookupByIp.retryAfter(ipKey)));
+    return res.status(429).render('public/lookup', {
+      title: 'Find my appointments',
+      results: null,
+      email,
+      error: 'Too many searches from this connection. Please try again in a few minutes.',
+    });
+  }
+  guard.limits.lookupByIp.hit(ipKey);
+
   const results = db
     .prepare(
       `SELECT b.token, b.student_name, b.status, sl.slot_date, sl.start_time, sl.end_time,
@@ -633,7 +657,23 @@ router.post('/lookup', (req, res) => {
        LIMIT 100`
     )
     .all(email);
-  return res.render('public/lookup', { title: 'Find my appointments', results, email });
+
+  // The links go to the address itself. Whoever typed it only learns that a
+  // message was sent — the same answer whether or not anything is booked, so
+  // the form cannot be used to test which parents have appointments.
+  const mailReady = mail.current().enabled;
+  if (mailReady) {
+    if (results.length) sendLookupEmail(email, results).catch((err) => console.error('[lookup]', err.message));
+    return res.render('public/lookup', { title: 'Find my appointments', results: null, sent: true, email });
+  }
+  // Without email set up there is no safe way to deliver links: show the times
+  // without names or links, and point to the confirmation message or the office.
+  return res.render('public/lookup', {
+    title: 'Find my appointments',
+    results: results.map((r) => ({ ...r, token: null, student_name: null })),
+    sent: false,
+    email,
+  });
 });
 
 /* ------------------ printable public day sheet --------------------- */

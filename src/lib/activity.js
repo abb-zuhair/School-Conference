@@ -10,6 +10,8 @@ const { db } = require('../db');
 /** Human wording for each action key. Anything missing falls back to the key with spaces. */
 const LABELS = {
   login: 'Signed in',
+  login_failed: 'Wrong password at sign-in',
+  login_throttled: 'Sign-in blocked after too many attempts',
   login_microsoft: 'Signed in with Microsoft',
   sso_account_created: 'Account created at first Microsoft sign-in',
   sso_denied_unknown: 'Microsoft sign-in refused (no account)',

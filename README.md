@@ -49,6 +49,7 @@ npm run messaging    # WhatsApp templates against a mock WATI host
 npm run email        # SMTP settings and teacher copies against a local SMTP sink
 npm run activity     # the activity log: what is recorded, the page, filters, CSV, campus scoping
 npm run branding     # Admin › Branding: name, mark, logo, colours, theme, email colours
+npm run security     # headers, CSRF, throttling, session renewal, campus-admin boundary, uploads, lookup
 ```
 
 `npm run smoke`, `features`, `department`, `slots` and `family` each want a freshly seeded
@@ -379,6 +380,53 @@ An **event** is a booking window. A **schedule** is one bookable calendar inside
 That indirection is what lets the same engine serve a 40-teacher conference and a two-counter uniform shop without special cases.
 
 ---
+
+## Security
+
+What the app does on its own, so a reviewer knows where to look (`npm run
+security` checks each point against a running server):
+
+- **Secrets never reach the browser.** The WATI token, SMTP password and Entra
+  client secret are only ever read on the server; the admin forms show a
+  masked hint and keep the stored value when the box is left blank. The WATI
+  token and SMTP password are encrypted at rest in the database (AES-256-GCM,
+  key derived from `SESSION_SECRET`), so a copied backup file does not hand them
+  over. Change `SESSION_SECRET` and they must be re-entered — the pages say so.
+  `.env` and `data/` are never in a deploy zip.
+- **Sessions** are server-side (SQLite store); the cookie is `HttpOnly`,
+  `SameSite=Lax`, `Secure` in production over HTTPS, and the session id is
+  renewed at every sign-in (password or Microsoft). Microsoft sign-in checks
+  `state` and the id-token `nonce`.
+- **Cross-site request forgery:** every POST must carry an `Origin` or
+  `Referer` naming this site, on top of the `SameSite` cookie; a foreign one is
+  refused with 403. Redirects after a form only follow a same-site Referer.
+- **Headers:** a Content-Security-Policy (`default-src 'self'`,
+  `frame-ancestors 'none'`, `form-action 'self'`), `X-Frame-Options: DENY`,
+  `nosniff`, a referrer policy, and HSTS in production.
+- **Sign-in throttling:** ten wrong passwords on an account, or a hundred from
+  one address, in fifteen minutes → 429 for the rest of the window; every
+  failure and every block is in the Activity log. Parent lookups and
+  booking-link misses are throttled per address as well.
+- **Authorisation** is enforced server-side on every route: teachers reach only
+  their own sheets (`canManageSchedule`), department heads their department,
+  campus admins their campus — and a campus admin can never create, edit,
+  deactivate or reset the password of a full administrator. Full-database
+  backup, branding, email and WhatsApp settings are administrator-only.
+- **Parents' links stay with the parent.** "Find my appointments" emails the
+  list to the address typed rather than showing it, and answers the same way
+  whether or not anything is booked. Without email configured it shows times
+  only — no names, no links.
+- **Uploads:** CSV stays in memory; a logo must really be a PNG/JPG/WebP/SVG by
+  its bytes, an SVG may not contain scripts, handlers or external references,
+  and the logo is served under `default-src 'none'`.
+- **Output escaping:** EJS escapes everything by default; the one raw JSON
+  block (import results) escapes `<`. Database access is parameterised
+  throughout.
+- Errors in production show a generic page; stack traces go to the log only.
+
+Still on you: keep `SESSION_SECRET` long and private, use HTTPS (Railway does),
+keep the Entra client secret in Railway variables only, download backups to
+somewhere safe, and review the Activity log now and then.
 
 ## Notes, limits, and what would come next
 

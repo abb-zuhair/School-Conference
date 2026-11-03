@@ -3,6 +3,8 @@ const express = require('express');
 const { db } = require('../db');
 const config = require('../config');
 const auth = require('../lib/auth');
+const guard = require('../lib/guard');
+const helpers = require('../lib/helpers');
 const sched = require('../lib/scheduling');
 const { notifyAsync } = require('../services/notify');
 const { toCsv, formatDate, formatTime, MODES, asBool } = require('../lib/helpers');
@@ -21,25 +23,44 @@ router.get('/login', (req, res) => {
   });
 });
 
-router.post('/login', (req, res) => {
+router.post('/login', (req, res, next) => {
   const email = String(req.body.email || '').trim();
   const password = String(req.body.password || '');
+  const ipKey = req.ip || 'unknown';
+  const emailKey = email.toLowerCase();
+  const { loginByIp, loginByEmail } = guard.limits;
+  const page = (status, error) =>
+    res.status(status).render('staff/login', { title: 'Staff sign in', email, error, ssoEnabled: config.entra.enabled });
+
+  // Too many wrong passwords from this address, or against this account: wait it out.
+  if (!loginByIp.allowed(ipKey) || !loginByEmail.allowed(emailKey)) {
+    const wait = Math.max(loginByIp.retryAfter(ipKey), loginByEmail.retryAfter(emailKey));
+    auth.audit(null, 'login_throttled', { email: emailKey }, { actor: 'sign-in guard' });
+    res.set('Retry-After', String(wait));
+    return page(429, `Too many sign-in attempts. Try again in ${Math.ceil(wait / 60)} minute(s), or use the Microsoft button.`);
+  }
+
   const user = auth.findByEmail(email);
   if (!user || !user.active || !auth.verifyPassword(password, user.password_hash)) {
-    return res.status(401).render('staff/login', {
-      title: 'Staff sign in',
-      email,
-      error: 'Wrong email or password.',
-      ssoEnabled: config.entra.enabled,
-    });
+    loginByIp.hit(ipKey);
+    loginByEmail.hit(emailKey);
+    auth.audit(user ? user.id : null, 'login_failed', { email: emailKey }, user ? {} : { actor: emailKey || 'unknown' });
+    return page(401, 'Wrong email or password.');
   }
-  db.prepare("UPDATE staff SET last_login_at = datetime('now'), last_login_method = 'password' WHERE id = ?").run(user.id);
-  req.session.staffId = user.id;
-  auth.audit(user.id, 'login', { email: user.email });
-  const dest = req.session.returnTo || (auth.ADMIN_ROLES.includes(user.role) ? '/admin' : '/staff');
-  delete req.session.returnTo;
-  if (user.must_change_pw) return res.redirect('/staff/password');
-  return res.redirect(dest);
+
+  loginByIp.clear(ipKey);
+  loginByEmail.clear(emailKey);
+  const returnTo = req.session.returnTo;
+  // A fresh session id on sign-in, so a session fixed before sign-in is worthless.
+  return req.session.regenerate((err) => {
+    if (err) return next(err);
+    db.prepare("UPDATE staff SET last_login_at = datetime('now'), last_login_method = 'password' WHERE id = ?").run(user.id);
+    req.session.staffId = user.id;
+    auth.audit(user.id, 'login', { email: user.email });
+    const dest = returnTo || (auth.ADMIN_ROLES.includes(user.role) ? '/admin' : '/staff');
+    if (user.must_change_pw) return res.redirect('/staff/password');
+    return res.redirect(dest);
+  });
 });
 
 router.post('/logout', (req, res) => {
@@ -383,7 +404,7 @@ router.post('/booking/:id/:action', (req, res) => {
     db.prepare('UPDATE bookings SET status = ? WHERE id = ?').run(action, booking.id);
     auth.audit(user.id, 'booking_status', { bookingId: booking.id, scheduleId: booking.schedule_id, parent: booking.parent_name, slot: `${booking.slot_date} ${booking.start_time}`, from: booking.status, to: action });
   }
-  const back = req.get('referer') || `/staff/schedule/${booking.schedule_id}`;
+  const back = helpers.sameSiteBack(req, `/staff/schedule/${booking.schedule_id}`);
   res.redirect(back);
 });
 

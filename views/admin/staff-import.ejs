@@ -92,7 +92,7 @@ Uniform Counter 1,uniform1@aca.edu.kw,,,desk,Front Office,,,</pre>
       <script>
         function copyPasswords() {
           var rows = [['email','password']].concat(
-            <%- JSON.stringify(result.passwords.map(function (p) { return [p.email, p.password]; })) %>
+            <%- JSON.stringify(result.passwords.map(function (p) { return [p.email, p.password]; })).replace(/</g, '\\u003c') %>
           );
           navigator.clipboard.writeText(rows.map(function (r) { return r.join(','); }).join('\n'));
         }

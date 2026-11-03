@@ -58,6 +58,23 @@ function formatStamp(stamp) {
   return dt.isValid ? dt.toFormat('ccc d LLL yyyy, h:mm a') : String(stamp);
 }
 
+/**
+ * The page to go back to after a form: the Referer when it is one of our own
+ * pages, otherwise the fallback — never an address another site handed us.
+ */
+function sameSiteBack(req, fallback) {
+  const ref = req.get('referer');
+  if (!ref) return fallback;
+  try {
+    const u = new URL(ref, config.baseUrl);
+    const own = new Set([new URL(config.baseUrl).host, String(req.get('host') || '')].map((h) => h.toLowerCase()));
+    if (!own.has(u.host.toLowerCase())) return fallback;
+    return `${u.pathname}${u.search}` || fallback;
+  } catch (_) {
+    return fallback;
+  }
+}
+
 function formatTime(time) {
   const [h, m] = String(time).split(':').map(Number);
   if (Number.isNaN(h)) return time;
@@ -175,6 +192,7 @@ function searchKey(value) {
 
 module.exports = {
   TZ,
+  sameSiteBack,
   faviconDataUrl: () => require('../services/branding').faviconDataUrl(),
   formatStamp,
   roleLabel,

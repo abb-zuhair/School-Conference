@@ -393,7 +393,7 @@ function getBooking(where, param) {
               st.name AS staff_name, st.email AS staff_email, st.title AS staff_title,
               d.name AS department_name,
               e.name AS event_name, e.type AS event_type, e.slug AS event_slug,
-              e.allow_cancel, e.cancel_cutoff_hrs, e.instructions,
+              e.allow_cancel, e.cancel_cutoff_hrs, e.instructions, e.campus_id,
               cp.name AS campus_name, cp.slug AS campus_slug
        FROM bookings b
        JOIN slots sl ON sl.id = b.slot_id

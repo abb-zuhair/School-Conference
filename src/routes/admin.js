@@ -23,6 +23,7 @@ const {
   nowLocal,
   asBool,
   formatStamp,
+  sameSiteBack,
   EVENT_TYPES,
   MODES,
 } = require('../lib/helpers');
@@ -198,10 +199,34 @@ router.get('/staff', (req, res) => {
   });
 });
 
-function upsertStaff(body, actorId) {
+/**
+ * Whether `actor` may change `target`'s account. A campus admin stays on their
+ * own campus and never touches an administrator — otherwise resetting the
+ * administrator's password would hand them the whole system.
+ */
+function mayManageStaff(actor, target) {
+  if (!actor || !target) return false;
+  if (actor.role === 'admin') return true;
+  if (target.role === 'admin') return false;
+  return auth.canAccessCampus(actor, target.campus_id);
+}
+
+/** The roles an actor may hand out: only a full administrator creates administrators. */
+function grantableRole(actor, wanted) {
+  const role = auth.ROLES.includes(wanted) ? wanted : 'teacher';
+  if (role === 'admin' && actor.role !== 'admin') throw new Error('Only an administrator can create or promote administrators.');
+  return role;
+}
+
+function upsertStaff(body, actor) {
+  const actorId = actor.id;
   const email = String(body.email || '').trim().toLowerCase();
   if (!email) throw new Error('Email is required.');
   const existing = auth.findByEmail(email);
+  if (existing && !mayManageStaff(actor, existing)) throw new Error('You cannot change that account.');
+  const campusWanted = Number(body.campus_id) || null;
+  if (campusWanted && !auth.canAccessCampus(actor, campusWanted)) throw new Error('That campus is outside your scope.');
+  if (!campusWanted && actor.role !== 'admin') throw new Error('Choose a campus.');
   const payload = {
     campus_id: Number(body.campus_id) || null,
     department_id: Number(body.department_id) || null,
@@ -210,7 +235,7 @@ function upsertStaff(body, actorId) {
     email,
     phone: String(body.phone || '').trim() || null,
     title: String(body.title || '').trim() || null,
-    role: auth.ROLES.includes(body.role) ? body.role : 'teacher',
+    role: grantableRole(actor, body.role),
   };
   if (existing) {
     db.prepare(
@@ -240,7 +265,7 @@ function upsertStaff(body, actorId) {
 
 router.post('/staff', (req, res) => {
   try {
-    const result = upsertStaff(req.body, auth.currentUser(req).id);
+    const result = upsertStaff(req.body, auth.currentUser(req));
     req.flash(
       'success',
       result.created
@@ -416,8 +441,11 @@ router.post('/staff/bulk', (req, res) => {
 });
 
 router.post('/staff/:id/reset-password', (req, res) => {
+  const target = auth.findById(Number(req.params.id));
+  if (!target) return res.redirect('/admin/staff');
+  if (!mayManageStaff(auth.currentUser(req), target)) return res.status(403).send('Not allowed');
   const temp = token(6);
-  db.prepare('UPDATE staff SET password_hash = ?, must_change_pw = 1 WHERE id = ?').run(auth.hashPassword(temp), Number(req.params.id));
+  db.prepare('UPDATE staff SET password_hash = ?, must_change_pw = 1 WHERE id = ?').run(auth.hashPassword(temp), target.id);
   auth.audit(auth.currentUser(req).id, 'staff_password_reset', { staffId: req.params.id });
   req.flash(
     'success',
@@ -431,7 +459,11 @@ router.post('/staff/:id/reset-password', (req, res) => {
 router.post('/staff/:id/toggle', (req, res) => {
   const target = auth.findById(Number(req.params.id));
   if (!target) return res.redirect('/admin/staff');
-  if (!auth.canAccessCampus(auth.currentUser(req), target.campus_id)) return res.status(403).send('Not allowed');
+  if (!mayManageStaff(auth.currentUser(req), target)) return res.status(403).send('Not allowed');
+  if (target.id === auth.currentUser(req).id) {
+    req.flash('error', 'You cannot deactivate your own account.');
+    return res.redirect('/admin/staff');
+  }
   db.prepare('UPDATE staff SET active = CASE active WHEN 1 THEN 0 ELSE 1 END WHERE id = ?').run(target.id);
   auth.audit(auth.currentUser(req).id, target.active ? 'staff_deactivate' : 'staff_activate', { staffId: target.id, email: target.email });
   res.redirect('/admin/staff');
@@ -484,7 +516,7 @@ router.post('/staff/import', upload.single('csv_file'), (req, res) => {
           department_id: departmentId,
           role: row.role || 'teacher',
         },
-        actorId
+        auth.currentUser(req)
       );
       if (out.created) {
         result.created += 1;
@@ -526,6 +558,8 @@ router.post('/classes', (req, res) => {
     req.flash('error', 'Pick a teacher and enter a class name.');
     return res.redirect('/admin/staff');
   }
+  const owner = auth.findById(staffId);
+  if (!owner || !auth.canAccessCampus(auth.currentUser(req), owner.campus_id)) return res.status(403).send('Not allowed');
   const made = db.prepare('INSERT INTO classes (staff_id, name, grade_level, room, sort_order) VALUES (?, ?, ?, ?, ?)').run(
     staffId,
     name,
@@ -535,16 +569,19 @@ router.post('/classes', (req, res) => {
   );
   auth.audit(auth.currentUser(req).id, 'class_create', { classId: made.lastInsertRowid, name, staffId });
   req.flash('success', `Class “${name}” added.`);
-  return res.redirect(req.get('referer') || '/admin/staff');
+  return res.redirect(sameSiteBack(req, '/admin/staff'));
 });
 
 router.post('/classes/:id/delete', (req, res) => {
-  const cls = db.prepare('SELECT id, name, staff_id FROM classes WHERE id = ?').get(Number(req.params.id));
-  if (!cls) return res.redirect(req.get('referer') || '/admin/staff');
+  const cls = db
+    .prepare('SELECT c.id, c.name, c.staff_id, s.campus_id FROM classes c LEFT JOIN staff s ON s.id = c.staff_id WHERE c.id = ?')
+    .get(Number(req.params.id));
+  if (!cls) return res.redirect(sameSiteBack(req, '/admin/staff'));
+  if (!auth.canAccessCampus(auth.currentUser(req), cls.campus_id)) return res.status(403).send('Not allowed');
   db.prepare('DELETE FROM classes WHERE id = ?').run(cls.id);
   auth.audit(auth.currentUser(req).id, 'class_delete', { classId: cls.id, name: cls.name, staffId: cls.staff_id });
   req.flash('success', 'Class removed.');
-  res.redirect(req.get('referer') || '/admin/staff');
+  res.redirect(sameSiteBack(req, '/admin/staff'));
 });
 
 /** Every class in one list, so a whole grade can be re-pointed or cleared out at once. */
@@ -594,7 +631,7 @@ router.post('/classes/bulk', (req, res) => {
     .map(Number)
     .filter(Boolean);
   const action = String(req.body.action || '');
-  const back = req.get('referer') || '/admin/classes';
+  const back = sameSiteBack(req, '/admin/classes');
 
   if (!ids.length) {
     req.flash('error', 'Tick at least one class first.');
@@ -679,6 +716,7 @@ router.post('/classes/bulk', (req, res) => {
 router.get('/staff/:id', (req, res) => {
   const member = auth.findById(Number(req.params.id));
   if (!member) return res.status(404).render('error', { title: 'Not found', status: 404, message: 'Staff member not found.' });
+  if (!auth.canAccessCampus(auth.currentUser(req), member.campus_id)) return res.status(403).send('Not allowed');
   const classes = db.prepare('SELECT * FROM classes WHERE staff_id = ? ORDER BY sort_order, name').all(member.id);
   const schedules = sched.listSchedules('WHERE s.staff_id = ? ORDER BY s.id DESC', [member.id]);
   return res.render('admin/staff-detail', {
@@ -1772,15 +1810,18 @@ router.get('/events/:id/unbooked.csv', loadEvent, (req, res) => {
 /* ------------------------- notifications --------------------------- */
 
 router.get('/notifications', (req, res) => {
+  // A campus admin sees messages about their campus's events (and system-level ones with no booking).
+  const scope = auth.campusScope(auth.currentUser(req));
   const rows = db
     .prepare(
       `SELECT n.*, b.parent_name, b.parent_email, e.name AS event_name
        FROM notifications n
        LEFT JOIN bookings b ON b.id = n.booking_id
        LEFT JOIN events e ON e.id = b.event_id
+       WHERE ${scope === null ? '1=1' : '(e.campus_id = ? OR n.booking_id IS NULL)'}
        ORDER BY n.id DESC LIMIT 300`
     )
-    .all();
+    .all(...(scope === null ? [] : [scope]));
   res.render('admin/notifications', { title: 'Message log', rows });
 });
 
@@ -2184,10 +2225,11 @@ router.get('/backup.db', auth.requireRole('admin'), async (req, res, next) => {
 router.post('/bookings/:id/resend', (req, res) => {
   const booking = sched.bookingById(Number(req.params.id));
   if (!booking) return res.status(404).send('Not found');
+  if (!auth.canAccessCampus(auth.currentUser(req), booking.campus_id)) return res.status(403).send('Not allowed');
   notifyAsync(booking, 'confirmation');
   auth.audit(auth.currentUser(req).id, 'booking_resend', { bookingId: booking.id, parent: booking.parent_name });
   req.flash('success', 'Confirmation re-sent.');
-  return res.redirect(req.get('referer') || '/admin');
+  return res.redirect(sameSiteBack(req, '/admin'));
 });
 
 module.exports = router;
