@@ -202,6 +202,15 @@ Once someone has signed in, their Entra object id is stored, so changing their e
 
 When both are set up, Microsoft 365 is used unless the page says otherwise; with neither, bookings still go through and every email is logged as `skipped`.
 
+**Exchange Online limits.** Microsoft allows a mailbox three SMTP connections
+at once and about thirty messages a minute; beyond that it answers
+`432 4.3.2 Concurrent connections limit exceeded`. The app therefore keeps one
+pooled connection, sends at most one message every two seconds, and retries a
+4xx answer after 3, 10 and 30 seconds before logging it as failed. Messages
+queue in memory and go out in turn — a parent booking four teachers still gets
+four emails, a few seconds apart. `npm run email` includes a 432-then-success
+case.
+
 **Who is told.** Parents always: confirmation, cancellation, a moved appointment, and the reminder. Teachers get a copy when a parent books (student, phone, the parent's note) and when a parent or the office cancels — never for a cancellation they made themselves; a department head cancelling on a colleague's sheet counts as the office. Both teacher copies have a switch on the Email page. `npm run email` proves all of this against a local SMTP sink.
 
 ### WhatsApp — WATI

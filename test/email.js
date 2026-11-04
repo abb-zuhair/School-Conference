@@ -29,10 +29,22 @@ function check(name, ok, extra = '') {
 
 const inbox = []; // { to, from, subject, auth }
 let lastAuth = null;
+let throttleNext = 0; // answer the next N MAIL FROM commands with Exchange's 432, like a busy mailbox
+let throttled = 0;
 const smtp = new SMTPServer({
   secure: false,
   disabledCommands: ['STARTTLS'],
   authOptional: true,
+  onMailFrom(address, session, cb) {
+    if (throttleNext > 0) {
+      throttleNext -= 1;
+      throttled += 1;
+      const err = new Error('4.3.2 Concurrent connections limit exceeded. Visit https://aka.ms/concurrent_sending for more information.');
+      err.responseCode = 432;
+      return cb(err);
+    }
+    return cb();
+  },
   onAuth(auth, session, cb) {
     lastAuth = { user: auth.username, pass: auth.password };
     if (auth.username === 'mailer@example.aca.edu.kw' && auth.password === 'app-pass-1234') return cb(null, { user: auth.username });
@@ -401,6 +413,19 @@ const mailTo = (addr) => inbox.filter((m) => m.to.includes(addr));
   });
   r = await follow(a, '/admin/email');
   check('choosing SMTP explicitly switches to it', r.text.includes('Sending through <span class="mono">localhost'));
+
+  /* ---------- a busy Exchange mailbox: 432, then success ---------- */
+  // Exchange Online allows three connections and ~30 messages a minute per
+  // mailbox and answers "432 4.3.2 Concurrent connections limit exceeded"
+  // beyond that. The app keeps one pooled connection and retries a 4xx.
+  require('../src/services/mail').reset();
+  throttleNext = 1;
+  throttled = 0;
+  const sizeBefore = inbox.length;
+  r = await req(a, 'POST', '/admin/email/test', { test_to: 'busy@example.com' });
+  await settle(sizeBefore + 1, 80);
+  check('a 432 from the server is retried rather than failed', throttled === 1 && mailTo('busy@example.com').length === 1, `throttled ${throttled}, delivered ${mailTo('busy@example.com').length}`);
+  check('and the test reports success with the retry', r.text.includes('after 1 retry'), 'no retry note');
 
   /* ---------- only an admin ---------- */
   r = await req(teacher, 'GET', '/admin/email');

@@ -80,9 +80,19 @@ function getTransporter(smtp) {
     port: smtp.port,
     secure: smtp.secure,
     auth: smtp.user ? { user: smtp.user, pass: smtp.password } : undefined,
+    // One connection, reused, and no more than a message every two seconds.
+    // A parent booking four teachers used to open four connections at once,
+    // and Exchange Online allows a mailbox three ("432 4.3.2 Concurrent
+    // connections limit exceeded") and about thirty messages a minute.
+    // Messages queue in memory and go out in turn; nobody waits on them.
+    pool: true,
+    maxConnections: 1,
+    maxMessages: 100,
+    rateDelta: 2000,
+    rateLimit: 1,
     connectionTimeout: 15000,
     greetingTimeout: 15000,
-    socketTimeout: 30000,
+    socketTimeout: 60000,
     // Office 365 and Gmail want STARTTLS on 587; a self-hosted relay on the
     // school network may well present a certificate for a different name.
     tls: { rejectUnauthorized: settings.getBool('mail.verify_tls', true) },
@@ -102,15 +112,35 @@ async function sendMail(msg) {
   if (!msg.to) return { status: 'skipped', detail: 'No email address on the booking' };
 
   const t = getTransporter(cfg.smtp);
-  const info = await t.sendMail({
+  const mail = {
     from: { name: cfg.smtp.fromName, address: cfg.smtp.from },
     to: msg.to,
     cc: msg.cc && msg.cc.length ? msg.cc : undefined,
     replyTo: msg.replyTo || undefined,
     subject: msg.subject,
     html: msg.html,
-  });
-  return { status: 'sent', detail: `to ${msg.to} via ${cfg.smtp.host} (${info.messageId || 'no id'})` };
+  };
+  // A 4xx from the server means "not now", not "no": wait and try again.
+  const waits = [3000, 10000, 30000];
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      const info = await t.sendMail(mail);
+      return {
+        status: 'sent',
+        detail: `to ${msg.to} via ${cfg.smtp.host} (${info.messageId || 'no id'})${attempt ? ` after ${attempt} retr${attempt === 1 ? 'y' : 'ies'}` : ''}`,
+      };
+    } catch (err) {
+      if (!isTransient(err) || attempt >= waits.length) throw err;
+      await new Promise((r) => setTimeout(r, waits[attempt]));
+    }
+  }
+}
+
+/** 421/432/450/451/452 and dropped connections: the server is busy or throttling, try later. */
+function isTransient(err) {
+  const code = Number(err && err.responseCode);
+  if ([421, 432, 450, 451, 452].includes(code)) return true;
+  return /ECONNRESET|ETIMEDOUT|EPIPE|Connection closed|Timeout/i.test(String((err && err.message) || ''));
 }
 
 /** Open a connection and say hello, without sending anything. */
@@ -123,6 +153,7 @@ async function verify() {
 
 /** Forget the cached connection - after the settings change. */
 function reset() {
+  if (transporter && transporter.close) transporter.close();
   transporter = null;
   transporterKey = '';
 }

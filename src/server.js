@@ -160,6 +160,11 @@ function shutdown(signal) {
   console.log(`\n${signal} received — shutting down.`);
 
   if (reminderTask && typeof reminderTask.stop === 'function') reminderTask.stop();
+  try {
+    require('./services/mail').reset(); // close the pooled SMTP connection
+  } catch (_) {
+    /* nothing to close */
+  }
 
   const done = (code) => {
     try {
