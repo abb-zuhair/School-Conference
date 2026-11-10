@@ -521,6 +521,22 @@ async function follow(j, path) {
     check(`${name} has its quotes balanced`, (script.match(/"/g) || []).length % 2 === 0);
   }
 
+  /* ---------------- archived events can be found again ---------------- */
+  {
+    const ev = db.prepare("SELECT id, status FROM events WHERE slug = 'registration-hawally'").get();
+    const wasStatus = ev.status;
+    r = await req(a, 'POST', `/admin/events/${ev.id}/status`, { status: 'archived' });
+    if (r.status !== 302) db.prepare("UPDATE events SET status = 'archived' WHERE id = ?").run(ev.id);
+    r = await req(a, 'GET', '/admin');
+    check('an archived event leaves the overview', !r.text.includes('/e/registration-hawally'));
+    check('but the overview offers the archive', r.text.includes('href="/admin?archived=1"'));
+    r = await req(a, 'GET', '/admin?archived=1');
+    check('the archive lists it', r.status === 200 && r.text.includes('/e/registration-hawally'));
+    r = await req(a, 'GET', `/admin/events/${ev.id}`);
+    check('and it still opens', r.status === 200);
+    db.prepare('UPDATE events SET status = ? WHERE id = ?').run(wasStatus, ev.id);
+  }
+
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })().catch((err) => {

@@ -19,13 +19,22 @@
 
 <div class="card">
   <div class="card-head">
-    <h2>Events</h2>
+    <h2><%= showArchived ? 'Archived events' : 'Events' %></h2>
     <div class="spacer"></div>
+    <% if (showArchived) { %>
+      <a class="btn sm ghost" href="/admin">‹ Current events</a>
+    <% } else if (archivedCount > 0) { %>
+      <a class="btn sm ghost" href="/admin?archived=1">Archived (<%= archivedCount %>)</a>
+    <% } %>
     <a class="btn sm" href="/admin/events/new">+ New event</a>
   </div>
 
+  <% if (showArchived) { %>
+    <p class="muted small">Archived events keep every schedule, slot and booking. Open one and change its status back to <span class="mono">closed</span> or <span class="mono">published</span> to bring it back; its report and CSV still work while archived.</p>
+  <% } %>
+
   <% if (!events.length) { %>
-    <p class="muted small">No events yet. Create one, add the schedules parents book against, then publish it.</p>
+    <p class="muted small"><%= showArchived ? 'Nothing has been archived.' : 'No events yet. Create one, add the schedules parents book against, then publish it.' %></p>
   <% } else { %>
     <div class="table-wrap">
       <table class="data">

@@ -65,6 +65,11 @@ function campusesFor(req) {
 
 router.get('/', (req, res) => {
   const f = campusFilter(req, 'e.campus_id');
+  // Archived events stay out of the way until asked for; nothing is deleted.
+  const showArchived = String(req.query.archived || '') === '1';
+  const archivedCount = db
+    .prepare(`SELECT COUNT(*) AS n FROM events e WHERE ${f.sql} AND e.status = 'archived'`)
+    .get(...f.params).n;
   const events = db
     .prepare(
       `SELECT e.*, cp.name AS campus_name,
@@ -73,7 +78,7 @@ router.get('/', (req, res) => {
               (SELECT COALESCE(SUM(sl.capacity),0) FROM slots sl JOIN schedules s2 ON s2.id = sl.schedule_id
                 WHERE s2.event_id = e.id AND sl.blocked = 0) AS capacity
        FROM events e JOIN campuses cp ON cp.id = e.campus_id
-       WHERE ${f.sql} AND e.status != 'archived'
+       WHERE ${f.sql} AND e.status ${showArchived ? '=' : '!='} 'archived'
        ORDER BY e.id DESC`
     )
     .all(...f.params);
@@ -87,6 +92,8 @@ router.get('/', (req, res) => {
     title: 'Admin',
     events,
     counts,
+    showArchived,
+    archivedCount,
     EVENT_TYPES,
     storage: { path: dbPath, ephemeral: isEphemeralStorage() },
   });
